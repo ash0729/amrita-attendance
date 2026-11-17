@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A frosted glass disc holding the attendance ring (75% filled, like the app's target) and a check mark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:pathData="M23,54a31,31 0 1,0 62,0a31,31 0 1,0 -62,0"
+        android:strokeColor="#66FFFFFF" android:strokeWidth="1.2">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="28" android:startY="26" android:endX="80" android:endY="84">
+                <item android:offset="0" android:color="#40FFFFFF"/>
+                <item android:offset="1" android:color="#0EFFFFFF"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M32,54a22,22 0 1,0 44,0a22,22 0 1,0 -44,0"
+        android:strokeColor="#33FFFFFF" android:strokeWidth="6"/>
+    <path android:pathData="M54,32A22,22 0 1 1 32,54"
+        android:strokeWidth="6" android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient android:type="linear" android:startX="32" android:startY="32" android:endX="76" android:endY="76">
+                <item android:offset="0" android:color="#FF8DBBFF"/>
+                <item android:offset="1" android:color="#FF0A84FF"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M45,55L51.5,61.5L63.5,47"
+        android:strokeColor="#FFFFFFFF" android:strokeWidth="4.5"
+        android:strokeLineCap="round" android:strokeLineJoin="round"/>
+</vector>
