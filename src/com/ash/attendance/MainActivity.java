@@ -51,9 +51,10 @@ public class MainActivity extends Activity {
     static final String EXTRACT_JS = "(function(){var rows=[];"
             + "document.querySelectorAll('tr').forEach(function(tr){var c=tr.children;"
             + "if(c.length<9)return;rows.push([].map.call(c,function(x){return (x.innerText||'').trim();}));});"
-            + "var term='';var s=document.querySelector('select');"
-            + "if(s&&s.selectedIndex>=0&&s.options[s.selectedIndex])term=s.options[s.selectedIndex].text.trim();"
-            + "return JSON.stringify({term:term,rows:rows});})()";
+            + "var s=document.querySelector('select'),terms=[],ids=[],sel=-1;"
+            + "if(s){terms=[].map.call(s.options,function(o){return o.text.trim();});"
+            + "ids=[].map.call(s.options,function(o){return o.value;});sel=s.selectedIndex;}"
+            + "return JSON.stringify({term:terms[sel]||'',terms:terms,ids:ids,sel:sel,rows:rows});})()";
 
     WebView web;
     ScrollView scroll;
@@ -70,6 +71,9 @@ public class MainActivity extends Activity {
     int autoRating;      // 0 = autofill off, else 1..5
     String lastQid;      // loop guard: question id we last tried to save
     int pollTries;
+    boolean termSwitched;   // already navigated to the wanted semester during this refresh
+    JSONObject lastRead;    // last successful read of the page, used if the wanted semester never shows
+    String chosenTerm, chosenId; // semester picked this session only; every launch starts on the current one
 
     static final boolean DEBUG_WEB = false;
     static final String[] LISTS = {"https://" + HOST + "/client/course-feedback-list",
@@ -560,7 +564,11 @@ public class MainActivity extends Activity {
     void refresh() {
         spinner.setVisibility(View.VISIBLE);
         pollTries = 0;
-        web.loadUrl(URL);
+        termSwitched = false;
+        lastRead = null;
+        String id = chosenId != null ? chosenId
+                : currentTermName().equals(prefs.getString("defTermName", null)) ? prefs.getString("defTermId", null) : null;
+        web.loadUrl(id == null ? URL : URL + "?academic_term_id=" + id);
     }
 
     /** Called when any page finishes loading in the WebView. */
@@ -607,6 +615,52 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** The portal lists terms newest first, including future ones, and opens on an old one. */
+    String currentTermName() {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        int y = c.get(java.util.Calendar.YEAR), m = c.get(java.util.Calendar.MONTH) + 1;
+        int start = m >= 7 ? y : y - 1;                       // Jul-Dec: odd semester, Jan-Jun: even
+        return start + "-" + String.format("%02d", (start + 1) % 100) + (m >= 7 ? " Odd Sem" : " Even Sem");
+    }
+
+    /** First year of the current academic year, to hide semesters that haven't started. */
+    int currentStartYear() {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        return c.get(java.util.Calendar.MONTH) + 1 >= 7 ? c.get(java.util.Calendar.YEAR) : c.get(java.util.Calendar.YEAR) - 1;
+    }
+
+    /** Index of the semester to show: the one picked this session, else the current one, else -1 (leave it). */
+    int wantedTerm(JSONArray names) {
+        if (names == null) return -1;
+        String now = currentTermName();
+        if (chosenTerm != null) for (int i = 0; i < names.length(); i++) if (names.optString(i).equals(chosenTerm)) return i;
+        for (int i = 0; i < names.length(); i++) if (names.optString(i).equals(now)) return i;
+        return -1;
+    }
+
+    void pickAttTerm(final JSONArray names, final JSONArray ids) {
+        final java.util.ArrayList<Integer> keep = new java.util.ArrayList<>();
+        for (int i = 0; i < names.length(); i++) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(\\d{4})").matcher(names.optString(i));
+            if (!m.find() || Integer.parseInt(m.group(1)) <= currentStartYear()) keep.add(i);   // hide future terms
+        }
+        String[] items = new String[keep.size()];
+        for (int i = 0; i < items.length; i++) items[i] = names.optString(keep.get(i));
+        new android.app.AlertDialog.Builder(this).setTitle("Semester").setItems(items, (d, which) -> {
+            int i = keep.get(which);
+            chosenTerm = names.optString(i);
+            chosenId = ids.optString(i);
+            spinner.setVisibility(View.VISIBLE);
+            status.setText("Loading " + names.optString(i) + "…");
+            polling = true;
+            pollTries = 0;
+            termSwitched = true;
+            lastRead = null;
+            web.loadUrl(URL + "?academic_term_id=" + ids.optString(i));
+            ui.postDelayed(this::poll, 1200);
+        }).show();
+    }
+
     /** The table may be filled in after load, so retry for a few seconds. */
     void poll() {
         String url = web.getUrl();
@@ -615,21 +669,40 @@ public class MainActivity extends Activity {
             try {
                 String json = (String) new JSONTokener(value).nextValue();
                 JSONObject o = new JSONObject(json);
-                if (parse(o.getJSONArray("rows")).length() > 0) {
-                    prefs.edit().putString("data", json).putLong("time", System.currentTimeMillis()).apply();
-                    web.setVisibility(View.INVISIBLE);
-                    spinner.setVisibility(View.GONE);
-                    polling = false;
-                    render(o, System.currentTimeMillis(), false);
-                    return;
+                JSONArray names = o.optJSONArray("terms"), ids = o.optJSONArray("ids");
+                int want = wantedTerm(names), sel = o.optInt("sel", -1);
+                if (want >= 0 && names.optString(want).equals(currentTermName()))   // remember its id to skip a hop next time
+                    prefs.edit().putString("defTermName", names.optString(want)).putString("defTermId", ids.optString(want)).apply();
+                if (want >= 0 && sel != want) {
+                    // The page opened on another semester: go to the one we want, then read it.
+                    if (!termSwitched) {
+                        termSwitched = true;
+                        web.loadUrl(URL + "?academic_term_id=" + ids.optString(want));
+                    }
+                } else {
+                    lastRead = o;
+                    if (parse(o.getJSONArray("rows")).length() > 0) {
+                        if (o.optString("term").equals(currentTermName())) // the saved copy is always the current semester
+                            prefs.edit().putString("data", json).putLong("time", System.currentTimeMillis()).apply();
+                        web.setVisibility(View.INVISIBLE);
+                        spinner.setVisibility(View.GONE);
+                        polling = false;
+                        render(o, System.currentTimeMillis(), false);
+                        return;
+                    }
                 }
             } catch (Exception ignored) { }
-            if (++pollTries < 12) ui.postDelayed(this::poll, 1000);
+            if (++pollTries < 14) ui.postDelayed(this::poll, 1000);
             else {
                 polling = false;
                 spinner.setVisibility(View.GONE);
-                web.setVisibility(View.VISIBLE); // couldn't find the table: show the page itself
-                status.setText("Couldn't read the table; showing the portal page");
+                if (lastRead != null && lastRead.optJSONArray("terms") != null) { // page works, this semester just has no rows
+                    web.setVisibility(View.INVISIBLE);
+                    render(lastRead, System.currentTimeMillis(), false);
+                } else {
+                    web.setVisibility(View.VISIBLE); // couldn't find the table: show the page itself
+                    status.setText("Couldn't read the table; showing the portal page");
+                }
             }
         });
     }
@@ -638,7 +711,9 @@ public class MainActivity extends Activity {
         try {
             String json = prefs.getString("data", null);
             if (json == null) return false;
-            render(new JSONObject(json), prefs.getLong("time", 0), true);
+            JSONObject j = new JSONObject(json);
+            if (!j.has("terms")) return false;
+            render(j, prefs.getLong("time", 0), true);
             return true;
         } catch (Exception e) { return false; }
     }
@@ -683,6 +758,24 @@ public class MainActivity extends Activity {
             String term = data.optString("term", "");
             status.setText((term.isEmpty() ? "" : term + " · ") + (cached ? "saved " : "updated ")
                     + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date(time)));
+
+            final JSONArray tn = data.optJSONArray("terms"), ti = data.optJSONArray("ids");
+            if (tn != null && tn.length() > 1) {
+                LinearLayout t = card();
+                t.addView(text("Semester  \u00B7  " + term + "  \u25BE", 14, TXT, true));
+                Glass.pressable(t);
+                t.setOnClickListener(v -> pickAttTerm(tn, ti));
+                list.addView(t);
+            }
+            if (courses.length() == 0) {
+                status.setText((term.isEmpty() ? "" : term + " \u00B7 ") + "no attendance recorded yet");
+                LinearLayout none = card();
+                none.addView(text("Nothing has been recorded for this semester yet.", 14, DIM, false));
+                none.addView(text("Pick another semester above.", 13, DIM, false));
+                list.addView(none);
+                Glass.enter(list);
+                return;
+            }
 
             double overall = T == 0 ? 0 : 100.0 * A / T;
             LinearLayout head = card();

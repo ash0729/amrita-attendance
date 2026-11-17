@@ -2,12 +2,12 @@
 
 An Android app for the Amrita student portal. It shows your attendance without the sideways scrolling, and it fills in the course feedback forms so you don't spend an evening tapping through them.
 
-| | | | |
-|---|---|---|---|
-| ![Attendance, dark](docs/screenshots/attendance-dark.png) | ![Attendance, light](docs/screenshots/attendance-light.png) | ![Feedback, dark](docs/screenshots/feedback-dark.png) | ![Feedback, light](docs/screenshots/feedback-light.png) |
+| | | | | |
+|---|---|---|---|---|
+| ![Attendance, dark](docs/screenshots/attendance-dark.png) | ![Attendance, light](docs/screenshots/attendance-light.png) | ![Semester picker](docs/screenshots/attendance-semester-picker.png) | ![Feedback, dark](docs/screenshots/feedback-dark.png) | ![Feedback, light](docs/screenshots/feedback-light.png) |
 
-**[Download the APK](dist/amrita-attendance.apk)** (Android 7.0 or newer, 38 KB). Also on the [Releases page](../../releases).
-SHA-256: `42fb985f04265a06b6cab8318f16cf231a5d98b18ac4906a58e604bc99f927e8`
+**[Download the APK](dist/amrita-attendance.apk)** (version 1.1, Android 7.0 or newer, 38 KB). Also on the [Releases page](../../releases).
+SHA-256: `e4d00ff27583893247191f4cc62990db8a1817f3711b2e5cd5f164071888b120`
 
 ## Why I built this
 
@@ -33,6 +33,7 @@ Attendance
 - One card per course: percentage, classes attended out of total, absences.
 - A ring for overall attendance, and a tick at 75% on every bar.
 - Tells you "Can miss 5 more classes" or "Attend next 3 classes to reach 75%". It uses present plus duty leave over total, which is how the portal gets its own percentage (I checked all eight courses).
+- Opens on the current semester, like the official app, and a picker switches to any earlier one. A pick lasts until you close the app, so the next launch starts on the current semester again.
 - Keeps the last numbers, so it opens instantly with what it saw last time.
 
 Feedback
@@ -75,7 +76,7 @@ Three other things broke before it worked at all:
 
 ## What's tested, and what isn't
 
-Checked on a real phone against the real portal: sign-in, the attendance numbers, both feedback lists, and one-tap fill on a real course, where I tapped the last Save & Next and Finish myself.
+Checked on a real phone against the real portal: sign-in, the attendance numbers (the percentages match the official app's), the semester picker including a semester with no data yet, both feedback lists, and one-tap fill on a real course, where I tapped the last Save & Next and Finish myself.
 
 Not seen working yet: tapping a pending card to open its form (the fix above is in, I haven't watched it succeed), a fully hands-free run with the switch on, the wait for an OTP at the end of a form, and everything on the class TLP forms. Nothing was pending when I wrote them, so the TLP side is written against a completed form I could only look at. I don't know what the end-of-form OTP screen looks like either. The app looks for a visible text box with "otp" in its name, id or placeholder, and if yours is called something else it will miss it. Whether it all survives a real run, we'll see.
 
