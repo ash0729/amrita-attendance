@@ -19,6 +19,10 @@ It adds up to about half an hour of tapping, and I don't think anyone reads the 
 
 The attendance page had a smaller problem. It sits in the Beta portal behind a Microsoft login, the table is wider than a phone screen, and to find out how many classes I could still skip I did the 75% arithmetic in my head every time. That one I got tired of too.
 
+## The official app
+
+myAmrita has an Android app too. In the version on my phone (1.0.18) it covers the timetable, leaves, notifications, hostel details and a month-by-month class attendance view. Its Percentage screen shows one ring per course for the semester you pick: the percentage, and nothing else. No classes attended out of total, no overall figure, no answer to "how many can I still miss". There is no feedback section at all, so the forms stay on the website, which is built for a laptop screen.
+
 So the app does the arithmetic and the clicking. The OTP stays with you, since it goes to your email.
 
 ## What it does
