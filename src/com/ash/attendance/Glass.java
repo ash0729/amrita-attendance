@@ -29,36 +29,67 @@ import android.widget.TextView;
 final class Glass {
     private Glass() { }
 
-    /** Set once at start-up from the phone's theme: near-black glass in dark mode, white glass in light mode. */
-    static int BASE = 0xFF050508;
+    /** Set once at start-up from the phone's theme: pure black with smoky glass in dark mode, white glass in light mode. */
+    static int BASE = 0xFF000000;
     static boolean dark = true;
 
     static int dp(Context c, float v) { return Math.round(v * c.getResources().getDisplayMetrics().density); }
 
-    /** Frosted surface: a faint diagonal white gradient with a light rim. */
+    /** Frosted surface: smoky translucent fill with a specular rim (bright top-left and bottom-right). */
     static Drawable surface(Context c, float radiusDp) {
-        float r = dp(c, radiusDp);
-        GradientDrawable fill = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                dark ? new int[]{0x26FFFFFF, 0x0BFFFFFF} : new int[]{0xE6FFFFFF, 0xB8FFFFFF});
-        fill.setCornerRadius(r);
-        GradientDrawable rim = new GradientDrawable();
-        rim.setColor(Color.TRANSPARENT);
-        rim.setCornerRadius(r);
-        rim.setStroke(Math.max(1, dp(c, 1)), dark ? 0x26FFFFFF : 0x1F0B1B3B);
-        return new LayerDrawable(new Drawable[]{fill, rim});
+        return dark ? new Shape(dp(c, radiusDp), dp(c, 1), 0x24FFFFFF, 0x10FFFFFF, RIM)
+                    : new Shape(dp(c, radiusDp), dp(c, 1), 0xE6FFFFFF, 0xB8FFFFFF, new int[]{0x1F0B1B3B});
     }
 
-    /** Coloured glass for the selected state of a control. */
+    /** Selected state. Dark: lighter grey glass (the label carries the accent). Light: glass in the accent colour. */
+    static Drawable selected(Context c, float radiusDp, int accent) {
+        return dark ? new Shape(dp(c, radiusDp), dp(c, 1), 0x3DFFFFFF, 0x24FFFFFF, RIM_BRIGHT)
+                    : tinted(c, radiusDp, accent);
+    }
+
+    /** Coloured glass. */
     static Drawable tinted(Context c, float radiusDp, int color) {
-        float r = dp(c, radiusDp);
-        GradientDrawable fill = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[]{withAlpha(color, 0xF0), withAlpha(color, 0xB8)});
-        fill.setCornerRadius(r);
-        GradientDrawable rim = new GradientDrawable();
-        rim.setColor(Color.TRANSPARENT);
-        rim.setCornerRadius(r);
-        rim.setStroke(Math.max(1, dp(c, 1)), 0x66FFFFFF);
-        return new LayerDrawable(new Drawable[]{fill, rim});
+        return new Shape(dp(c, radiusDp), dp(c, 1), withAlpha(color, 0xF0), withAlpha(color, 0xB8), new int[]{0x66FFFFFF});
+    }
+
+    private static final int[] RIM = {0x8CFFFFFF, 0x1AFFFFFF, 0x0AFFFFFF, 0x4DFFFFFF};
+    private static final int[] RIM_BRIGHT = {0xCCFFFFFF, 0x26FFFFFF, 0x14FFFFFF, 0x80FFFFFF};
+
+    /** Rounded rect with a vertical fill gradient and a rim whose brightness runs diagonally across it. */
+    static final class Shape extends Drawable {
+        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), rim = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final RectF box = new RectF();
+        private final float radius, stroke;
+        private final int top, bottom;
+        private final int[] rimColors;
+
+        Shape(float radius, float stroke, int top, int bottom, int[] rimColors) {
+            this.radius = radius; this.stroke = stroke; this.top = top; this.bottom = bottom; this.rimColors = rimColors;
+            rim.setStyle(Paint.Style.STROKE);
+            rim.setStrokeWidth(stroke);
+        }
+
+        @Override
+        protected void onBoundsChange(android.graphics.Rect b) {
+            fill.setShader(new LinearGradient(0, b.top, 0, b.bottom, top, bottom, Shader.TileMode.CLAMP));
+            if (rimColors.length == 1) rim.setColor(rimColors[0]);
+            else rim.setShader(new LinearGradient(b.left, b.top, b.right, b.bottom, rimColors,
+                    new float[]{0f, 0.38f, 0.62f, 1f}, Shader.TileMode.CLAMP));
+        }
+
+        @Override
+        public void draw(Canvas c) {
+            float h = stroke / 2f;
+            box.set(getBounds());
+            float r = Math.min(radius, box.height() / 2f);
+            c.drawRoundRect(box, r, r, fill);
+            box.inset(h, h);
+            c.drawRoundRect(box, r - h, r - h, rim);
+        }
+
+        @Override public void setAlpha(int a) { fill.setAlpha(a); rim.setAlpha(a); }
+        @Override public void setColorFilter(android.graphics.ColorFilter f) { }
+        @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
     }
 
     /** Soft pill used for status labels: tinted fill and rim in the status colour. */
@@ -132,7 +163,7 @@ final class Glass {
     /** Dark gradient with three soft coloured glows that drift slowly, so the glass above has something to refract. */
     static final class Backdrop extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final int[] colors = dark ? new int[]{0xFF3E63DD, 0xFF7A8499, 0xFF3E63DD}
+        private final int[] colors = dark ? new int[]{0xFFFF8A3D, 0xFF6E6E80, 0xFF8A5CFF}
                                           : new int[]{0xFF9DB5FF, 0xFFC4CBDB, 0xFF9DB5FF};
         private final float[][] origin = {{0.12f, 0.10f}, {0.92f, 0.46f}, {0.22f, 0.90f}};
         private final float[] speed = {1f, -1.3f, 0.8f};
@@ -161,7 +192,7 @@ final class Glass {
         protected void onSizeChanged(int w, int h, int ow, int oh) {
             radius = Math.max(w, h) * 0.62f;
             for (int i = 0; i < 3; i++)
-                glows[i] = new RadialGradient(0, 0, radius, withAlpha(colors[i], dark ? 0x2E : 0x50), withAlpha(colors[i], 0),
+                glows[i] = new RadialGradient(0, 0, radius, withAlpha(colors[i], dark ? 0x16 : 0x50), withAlpha(colors[i], 0),
                         Shader.TileMode.CLAMP);
         }
 
@@ -261,6 +292,7 @@ final class Glass {
             r.set(0, 0, w, h);
             c.drawRoundRect(r, rad, rad, p);
             float fw = Math.max(h, w * Math.min(shown, 100f) / 100f);
+            p.setColor(Color.BLACK); // opaque, so the track's alpha doesn't dim the fill
             p.setShader(new LinearGradient(0, 0, fw, 0, lighten(color, 0.3f), color, Shader.TileMode.CLAMP));
             r.set(0, 0, fw, h);
             c.drawRoundRect(r, rad, rad, p);

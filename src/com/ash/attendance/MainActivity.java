@@ -44,8 +44,11 @@ public class MainActivity extends Activity {
     static final int TARGET = 75; // minimum attendance percentage
 
     // Palette, filled in by applyTheme() from the phone's light/dark setting.
-    static int BG, TXT, DIM, ACCENT, GOOD, WARN, BAD, ON_GOOD;
+    static int BG, TXT, DIM, ACCENT, GOOD, WARN, BAD, ON_GOOD, ON_SEL;
     static boolean dark = true;
+
+    // True when the portal answers with its "Custom Android applications are not allowed" page.
+    static final String BLOCKED_JS = "/access denied|custom android applications/i.test((document.body&&document.body.innerText)||'')";
 
     // Reads every table row with >= 9 cells plus the selected term name.
     static final String EXTRACT_JS = "(function(){var rows=[];"
@@ -54,7 +57,7 @@ public class MainActivity extends Activity {
             + "var s=document.querySelector('select'),terms=[],ids=[],sel=-1;"
             + "if(s){terms=[].map.call(s.options,function(o){return o.text.trim();});"
             + "ids=[].map.call(s.options,function(o){return o.value;});sel=s.selectedIndex;}"
-            + "return JSON.stringify({term:terms[sel]||'',terms:terms,ids:ids,sel:sel,rows:rows});})()";
+            + "return JSON.stringify({term:terms[sel]||'',terms:terms,ids:ids,sel:sel,rows:rows,blocked:" + BLOCKED_JS + "});})()";
 
     WebView web;
     ScrollView scroll;
@@ -94,7 +97,7 @@ public class MainActivity extends Activity {
             + "row.closed=/closed/i.test(row.act+' '+row.status);row.k=k;tr.setAttribute('data-ci',k);k++;rows.push(row);});"
             + "var s=document.querySelector('select'),terms=[],sel=0;"
             + "if(s){terms=[].map.call(s.options,function(o){return o.text.trim();});sel=s.selectedIndex;}"
-            + "return JSON.stringify({term:terms[sel]||'',terms:terms,rows:rows});})()";
+            + "return JSON.stringify({term:terms[sel]||'',terms:terms,rows:rows,blocked:" + BLOCKED_JS + "});})()";
 
     TextView titleView, ratingLabel;
     android.widget.Switch autoSwitch;
@@ -274,12 +277,13 @@ public class MainActivity extends Activity {
                 == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         Glass.dark = dark;
         if (dark) {
-            BG = 0xFF0A0A0C; TXT = 0xFFF5F5F7; DIM = 0xFF9A9AA6; ACCENT = 0xFF0A84FF;
-            GOOD = 0xFF30D158; WARN = 0xFFFF9F0A; BAD = 0xFFFF453A; ON_GOOD = Color.WHITE;
+            BG = 0xFF000000; TXT = 0xFFF5F5F7; DIM = 0xFF8E8E93; ACCENT = 0xFFFFA048;
+            GOOD = 0xFF30D158; WARN = 0xFFFFD60A; BAD = 0xFFFF453A; ON_GOOD = Color.WHITE;
         } else {
             BG = 0xFFF5F6F8; TXT = 0xFF0B0B0F; DIM = 0xFF6B6F80; ACCENT = 0xFF0A6CFF;
             GOOD = 0xFF1A9D4A; WARN = 0xFFC77700; BAD = 0xFFD92D20; ON_GOOD = Color.WHITE;
         }
+        ON_SEL = dark ? ACCENT : Color.WHITE; // dark: orange label on grey glass
         Glass.BASE = BG;
     }
 
@@ -354,13 +358,13 @@ public class MainActivity extends Activity {
     void updateRatingUi() {
         for (int i = 0; i < 5; i++) {
             boolean sel = i + 1 == rating;
-            chips[i].setBackground(sel ? Glass.tinted(this, 16, ACCENT) : Glass.surface(this, 16));
-            chips[i].setTextColor(sel ? Color.WHITE : TXT);
+            chips[i].setBackground(sel ? Glass.selected(this, 16, ACCENT) : Glass.surface(this, 16));
+            chips[i].setTextColor(sel ? ON_SEL : TXT);
         }
         for (int i = 0; i < 2; i++) {
             boolean sel = i == kind;
-            tabs[i].setBackground(sel ? Glass.tinted(this, 13, ACCENT) : null);
-            tabs[i].setTextColor(sel ? Color.WHITE : DIM);
+            tabs[i].setBackground(sel ? Glass.selected(this, 13, ACCENT) : null);
+            tabs[i].setTextColor(sel ? ON_SEL : DIM);
         }
         ratingLabel.setText((kind == 0 ? "Every question: " + rating + " · " + LABELS[rating - 1]
                                        : "Every question: choice number " + rating + " (1 = first option)")
@@ -371,8 +375,8 @@ public class MainActivity extends Activity {
     void updateNav() {
         for (int i = 0; i < 2; i++) {
             boolean sel = (i == 1) == feedbackMode;
-            navTabs[i].setBackground(sel ? Glass.tinted(this, 24, ACCENT) : null);
-            navTabs[i].setTextColor(sel ? Color.WHITE : DIM);
+            navTabs[i].setBackground(sel ? Glass.selected(this, 24, ACCENT) : null);
+            navTabs[i].setTextColor(sel ? ON_SEL : DIM);
         }
     }
 
@@ -487,6 +491,7 @@ public class MainActivity extends Activity {
         web.evaluateJavascript(LIST_JS, value -> {
             try {
                 JSONObject o = new JSONObject((String) new JSONTokener(value).nextValue());
+                if (o.optBoolean("blocked")) { listPolling = false; showBlocked(LISTS[kind]); return; }
                 if (o.getJSONArray("rows").length() > 0) {
                     listPolling = false;
                     spinner.setVisibility(View.GONE);
@@ -669,6 +674,7 @@ public class MainActivity extends Activity {
             try {
                 String json = (String) new JSONTokener(value).nextValue();
                 JSONObject o = new JSONObject(json);
+                if (o.optBoolean("blocked")) { polling = false; showBlocked(URL); return; }
                 JSONArray names = o.optJSONArray("terms"), ids = o.optJSONArray("ids");
                 int want = wantedTerm(names), sel = o.optInt("sel", -1);
                 if (want >= 0 && names.optString(want).equals(currentTermName()))   // remember its id to skip a hop next time
@@ -838,7 +844,35 @@ public class MainActivity extends Activity {
         return "Attend next " + x + " class" + (x == 1 ? "" : "es") + " to reach " + TARGET + "%";
     }
 
-    static int colorFor(double p) { return p >= 80 ? ACCENT : p >= TARGET ? WARN : BAD; }
+    static int colorFor(double p) { return p >= 80 ? (dark ? GOOD : ACCENT) : p >= TARGET ? WARN : BAD; }
+
+    /** The portal refused the app. Say so, keep the saved numbers, and offer the page in the phone's browser. */
+    void showBlocked(final String url) {
+        spinner.setVisibility(View.GONE);
+        web.setVisibility(View.INVISIBLE);
+        ratingBar.setVisibility(View.GONE);
+        boolean cached = !feedbackMode && showCached();
+        if (!cached) list.removeAllViews();
+        LinearLayout c = card();
+        c.addView(text("The portal is blocking this app", 16, TXT, true));
+        TextView why = text("students.amrita.edu now answers \u201CAccess denied. Custom Android applications are not "
+                + "allowed.\u201D " + (cached ? "Below are the last numbers the app saved." : "The page still opens in your browser."),
+                13, DIM, false);
+        why.setPadding(0, dp(5), 0, 0);
+        c.addView(why);
+        TextView open = text("Open in browser", 14, ON_SEL, true);
+        open.setGravity(Gravity.CENTER);
+        open.setPadding(0, dp(13), 0, dp(13));
+        open.setBackground(Glass.selected(this, 21, ACCENT));
+        Glass.pressable(open);
+        open.setOnClickListener(v -> startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                android.net.Uri.parse(url))));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.topMargin = dp(13);
+        c.addView(open, lp);
+        list.addView(c, 0);
+        status.setText(cached ? "Blocked by the portal \u00B7 showing saved numbers" : "Blocked by the portal");
+    }
 
     LinearLayout card() {
         LinearLayout l = new LinearLayout(this);
