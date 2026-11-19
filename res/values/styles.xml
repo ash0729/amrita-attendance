@@ -3,5 +3,6 @@
     <!-- Light phone theme: white glass. -->
     <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:colorAccent">#FF0A6CFF</item>
     </style>
 </resources>

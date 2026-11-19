@@ -3,5 +3,6 @@
     <!-- Dark phone theme: black glass. -->
     <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:colorAccent">#FFFFA048</item>
     </style>
 </resources>

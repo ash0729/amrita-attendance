@@ -1,6 +1,10 @@
 package com.ash.attendance;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -10,6 +14,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewOutlineProvider;
@@ -19,6 +24,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -161,12 +167,16 @@ public class MainActivity extends Activity {
         final TextView refresh = text("\u21BB", 21, TXT, false);
         refresh.setGravity(Gravity.CENTER);
         refresh.setBackground(Glass.surface(this, 24));
-        refresh.setContentDescription("Refresh");
+        refresh.setContentDescription("Refresh \u00B7 long-press to import");
         Glass.pressable(refresh);
         refresh.setOnClickListener(v -> {
             refresh.animate().rotationBy(360f).setDuration(520).start();
             if (feedbackMode) { listPolling = false; spinner.setVisibility(View.VISIBLE); web.loadUrl(LISTS[kind]); }
             else refresh();
+        });
+        refresh.setOnLongClickListener(v -> {
+            importDialog("", currentTermName(), null);
+            return true;
         });
         bar.addView(refresh, new LinearLayout.LayoutParams(dp(48), dp(48)));
         content.addView(bar);
@@ -211,6 +221,20 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView v, String url) {
                 onPage(url);
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView v, android.webkit.WebResourceRequest r,
+                                            android.webkit.WebResourceResponse e) {
+                if (r == null || !r.isForMainFrame()) return;
+                android.net.Uri u = r.getUrl();
+                String host = u == null ? null : u.getHost();
+                if (host != null && host.endsWith("amrita.edu") && e != null && e.getStatusCode() == 403) {
+                    polling = false;
+                    listPolling = false;
+                    spinner.setVisibility(View.GONE);
+                    showBlocked(u.toString());
+                }
             }
         });
         // WebView silently cancels JS confirm()/alert(); the portal's "Finish" button needs confirm().
@@ -266,9 +290,11 @@ public class MainActivity extends Activity {
         updateNav();
         setContentView(root);
 
-        boolean cached = showCached();
-        if (!cached) status.setText("Loading…");
-        refresh();
+        if (!handleSendIntent(getIntent())) {
+            boolean cached = showCached();
+            if (!cached) status.setText("Loading…");
+            refresh();
+        }
     }
 
     /** Black glass on a dark phone, white glass on a light one. */
@@ -762,7 +788,8 @@ public class MainActivity extends Activity {
                 A += courses.getJSONObject(i).getInt("attended");
             }
             String term = data.optString("term", "");
-            status.setText((term.isEmpty() ? "" : term + " · ") + (cached ? "saved " : "updated ")
+            String when = data.optBoolean("imported") ? "imported " : (cached ? "saved " : "updated ");
+            status.setText((term.isEmpty() ? "" : term + " · ") + when
                     + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date(time)));
 
             final JSONArray tn = data.optJSONArray("terms"), ti = data.optJSONArray("ids");
@@ -806,7 +833,9 @@ public class MainActivity extends Activity {
                 int col2 = colorFor(p);
                 LinearLayout card = card();
                 card.addView(text(c.getString("name"), 16, TXT, true));
-                card.addView(text(c.getString("code") + " · " + c.getString("faculty"), 12, DIM, false));
+                String faculty = c.getString("faculty");
+                card.addView(text(faculty.isEmpty() ? c.getString("code")
+                        : c.getString("code") + " \u00B7 " + faculty, 12, DIM, false));
                 LinearLayout row = new LinearLayout(this);
                 row.setGravity(Gravity.CENTER_VERTICAL);
                 row.setPadding(0, dp(13), 0, dp(8));
@@ -846,7 +875,7 @@ public class MainActivity extends Activity {
 
     static int colorFor(double p) { return p >= 80 ? (dark ? GOOD : ACCENT) : p >= TARGET ? WARN : BAD; }
 
-    /** The portal refused the app. Say so, keep the saved numbers, and offer the page in the phone's browser. */
+    /** The portal refused the app. Say so, keep the saved numbers, and offer a way to bring them in. */
     void showBlocked(final String url) {
         spinner.setVisibility(View.GONE);
         web.setVisibility(View.INVISIBLE);
@@ -855,23 +884,175 @@ public class MainActivity extends Activity {
         if (!cached) list.removeAllViews();
         LinearLayout c = card();
         c.addView(text("The portal is blocking this app", 16, TXT, true));
+        String extra = feedbackMode ? "The feedback forms need the portal, so they stay closed for now. "
+                : cached ? "Below are the last numbers the app saved. "
+                : "You can bring your numbers in from Chrome. ";
         TextView why = text("students.amrita.edu now answers \u201CAccess denied. Custom Android applications are not "
-                + "allowed.\u201D " + (cached ? "Below are the last numbers the app saved." : "The page still opens in your browser."),
-                13, DIM, false);
+                + "allowed.\u201D " + extra, 13, DIM, false);
         why.setPadding(0, dp(5), 0, 0);
         c.addView(why);
-        TextView open = text("Open in browser", 14, ON_SEL, true);
-        open.setGravity(Gravity.CENTER);
-        open.setPadding(0, dp(13), 0, dp(13));
-        open.setBackground(Glass.selected(this, 21, ACCENT));
-        Glass.pressable(open);
-        open.setOnClickListener(v -> startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
-                android.net.Uri.parse(url))));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.topMargin = dp(13);
-        c.addView(open, lp);
+
+        if (!feedbackMode) {
+            TextView imp = action("Import from clipboard", true);
+            imp.setOnClickListener(v -> importFromClipboard());
+            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(-1, -2);
+            ilp.topMargin = dp(13);
+            c.addView(imp, ilp);
+        }
+
+        TextView open = action("Open in browser", feedbackMode);
+        open.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))));
+        LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(-1, -2);
+        olp.topMargin = dp(13);
+        c.addView(open, olp);
+
+        TextView official = action("Open myAmrita", false);
+        official.setOnClickListener(v -> openOfficial());
+        LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(-1, -2);
+        flp.topMargin = dp(8);
+        c.addView(official, flp);
+
         list.addView(c, 0);
         status.setText(cached ? "Blocked by the portal \u00B7 showing saved numbers" : "Blocked by the portal");
+    }
+
+    TextView action(String label, boolean primary) {
+        TextView t = text(label, 14, primary ? ON_SEL : TXT, true);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(0, dp(13), 0, dp(13));
+        t.setBackground(primary ? Glass.selected(this, 21, ACCENT) : Glass.surface(this, 21));
+        Glass.pressable(t);
+        return t;
+    }
+
+    void openOfficial() {
+        Intent i = getPackageManager().getLaunchIntentForPackage("com.myamrita.studentportal");
+        if (i != null) {
+            try { startActivity(i); return; } catch (Exception ignored) { }
+        }
+        startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(URL)));
+    }
+
+    /** A table shared from Chrome or another app. Returns true when this intent was a share. */
+    boolean handleSendIntent(Intent intent) {
+        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return false;
+        CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
+        if (text == null) return false;
+        intent.removeExtra(Intent.EXTRA_TEXT); // a recreated activity must not import it again
+        String s = text.toString();
+        if (s.length() > 200000) s = s.substring(0, 200000);
+        runImport(s, null);
+        return true;
+    }
+
+    void importFromClipboard() {
+        String plain = null, html = null;
+        try {
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null && cm.hasPrimaryClip()) {
+                ClipData clip = cm.getPrimaryClip();
+                if (clip != null && clip.getItemCount() > 0) {
+                    ClipData.Item item = clip.getItemAt(0);
+                    CharSequence h = item.getHtmlText();
+                    if (h != null) html = h.toString();
+                    CharSequence t = item.coerceToText(this);
+                    if (t != null) plain = t.toString();
+                }
+            }
+        } catch (Exception ignored) { }
+        if ((plain == null || plain.trim().isEmpty()) && (html == null || html.trim().isEmpty())) {
+            showBlocked(URL);
+            importDialog("", currentTermName(), "The clipboard is empty. Copy the attendance table first.");
+            return;
+        }
+        runImport(plain, html);
+    }
+
+    void runImport(String plain, String html) {
+        AttendanceImport.Result result = new AttendanceImport.Result("", new java.util.ArrayList<String[]>());
+        if (html != null) result = AttendanceImport.parseHtml(html);
+        if (result.rows.isEmpty() && plain != null) result = AttendanceImport.parseText(plain);
+        if (!result.rows.isEmpty()) {
+            saveImport(result, result.term.isEmpty() ? currentTermName() : result.term);
+            return;
+        }
+        if (!showCached()) list.removeAllViews();
+        importDialog(plain == null ? "" : plain, currentTermName(),
+                "Couldn't read a table from that. Copy the whole attendance table (with its numbers) and paste it again.");
+    }
+
+    void importDialog(final String prefill, String term, String error) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(21), dp(8), dp(21), 0);
+        box.addView(text("In Chrome, open the attendance page, select the table and Copy. Paste it below. "
+                + "One CSV row per course also works.", 13, DIM, false));
+        final EditText paste = new EditText(this);
+        paste.setTextSize(12);
+        paste.setMinLines(5);
+        paste.setMaxLines(9);
+        paste.setGravity(Gravity.TOP | Gravity.START);
+        paste.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        paste.setHint("Paste the attendance table here");
+        paste.setText(prefill);
+        box.addView(paste);
+        final EditText termBox = new EditText(this);
+        termBox.setTextSize(14);
+        termBox.setSingleLine(true);
+        termBox.setHint("Semester");
+        termBox.setText(term);
+        box.addView(termBox);
+        final TextView err = text(error == null ? "" : error, 12, BAD, false);
+        err.setPadding(0, dp(5), 0, 0);
+        box.addView(err);
+
+        final android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
+                .setTitle("Import attendance")
+                .setView(box)
+                .setPositiveButton("Import", null)
+                .setNegativeButton("Cancel", null)
+                .create();
+        dialog.setOnShowListener(x -> dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    AttendanceImport.Result r = AttendanceImport.parseText(paste.getText().toString());
+                    if (r.rows.isEmpty()) {
+                        err.setText("No attendance rows found. The table needs Total, Present, Absent and Percentage.");
+                        return;
+                    }
+                    String t = termBox.getText().toString().trim();
+                    if (t.isEmpty()) t = r.term.isEmpty() ? currentTermName() : r.term;
+                    dialog.dismiss();
+                    saveImport(r, t);
+                }));
+        dialog.show();
+    }
+
+    void saveImport(AttendanceImport.Result result, String term) {
+        try {
+            JSONArray rows = new JSONArray();
+            for (String[] row : result.rows) rows.put(new JSONArray(java.util.Arrays.asList(row)));
+            JSONObject o = new JSONObject();
+            o.put("term", term);
+            o.put("terms", new JSONArray().put(term));
+            o.put("ids", new JSONArray().put(""));
+            o.put("imported", true);
+            o.put("rows", rows);
+            prefs.edit().putString("data", o.toString()).putLong("time", System.currentTimeMillis()).apply();
+            if (feedbackMode) {
+                feedbackMode = false;
+                polling = false;
+                listPolling = false;
+                ratingBar.setVisibility(View.GONE);
+                titleView.setText("Attendance");
+                updateNav();
+            }
+            showBlocked(URL);
+            status.setText("Imported " + result.rows.size() + " course"
+                    + (result.rows.size() == 1 ? "" : "s") + " \u00B7 " + term);
+        } catch (Exception e) {
+            status.setText("Import failed: " + e.getMessage());
+        }
     }
 
     LinearLayout card() {
@@ -911,6 +1092,13 @@ public class MainActivity extends Activity {
     public void onBackPressed() {
         if (web.getVisibility() == View.VISIBLE && web.canGoBack()) web.goBack();
         else super.onBackPressed();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleSendIntent(intent);
     }
 
     @Override
