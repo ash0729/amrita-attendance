@@ -37,6 +37,15 @@ That is a deliberate rule, not a parsing bug. The app no longer reads the denial
 
 If Amrita IT allows a student-built client or provides an API, live attendance and feedback can come back. Until then the app is a viewer for saved and imported numbers, and the official app is one tap away.
 
+## Feedback in your browser
+
+The official app has no feedback section, and the portal now refuses this app, so the feedback filler moved into the phone's browser. It is one script, [`browser/amrita-feedback.user.js`](browser/amrita-feedback.user.js), that runs on the portal's feedback pages in a browser you are already signed in to. It is the same browser and the same login you would use by hand, and the script doesn't disguise anything.
+
+- **Firefox:** add the Violentmonkey extension, then open the script's raw link and install it. It runs on every feedback page by itself.
+- **Chrome or Brave:** these don't run userscripts on Android, so use the bookmarklet. In the app, Feedback → *Fill feedback in the browser* → *Copy bookmarklet*. Bookmark any page, edit the bookmark, paste the copied text over its URL and name it Feedback. On the feedback list, type Feedback in the address bar and tap the bookmark. A bookmarklet stops when the page reloads, and every Save & Next reloads it, so the bookmarklet opens the portal inside a frame on the same page and drives it from outside.
+
+A panel at the bottom works like the app's rating bar: pick 1 to 5, optionally turn on *Finish & submit by itself*, and tap *Open next pending*. You still press Send OTP and type the code; the panel steps out of the way while the keyboard is open. It then answers every question, presses Save & Next, and with the switch on presses Finish, accepts "Are you sure?" and goes back to the list. It stops and says why on a save that doesn't advance or a question with fewer options than your number. It makes no network requests of its own and never touches a login field.
+
 ## What it does
 
 Attendance
@@ -104,6 +113,8 @@ Not seen working yet: tapping a pending card to open its form (the fix above is 
 
 For 1.2, on the phone: the block card with the saved numbers, a table shared into the app, the import dialog, and the dark glass theme. The parser's tab, newline-in-a-cell, positional, HTML, CSV and junk cases run on the host with `./test.sh`. After the block I could not re-test any signed-in live page, including the feedback forms; that stays unverified until the portal allows the app again or IT provides an API.
 
+For the browser helper: `./browser-test.sh` runs seven end-to-end checks in headless Chromium against `test/mock-portal.py`, a local copy of the page shapes the app was written against (userscript and bookmarklet modes, auto finish, end-of-form OTP, the loop guard, TLP, and a blocked frame). On the phone I ran a whole course in Brave against that mock with real taps, from Send OTP to Finish and back to the list. Not tested: the real portal (its markup may have moved since the block), Firefox with Violentmonkey, and whether students.amrita.edu allows itself to be framed. If it doesn't, the bookmarklet says so and points you to Firefox.
+
 ## A note on answers
 
 The app gives every question the same answer. Choose the one you mean. The forms are for your teachers, and it's your login and your decision. This project isn't connected to Amrita, so check your college's rules before using it.
@@ -126,14 +137,16 @@ You need a JDK 21 and the Android SDK with platform 34, build-tools 34.0.0 and t
 ./build.sh
 ```
 
-`./test.sh` runs the parser checks on the host; it needs no device.
+`./test.sh` runs the parser checks on the host; it needs no device. `./browser-test.sh` rebuilds the bookmarklet and runs the browser helper against the mock portal; it needs Node 22 and Chromium.
 
 The SDK's own d8 crashed under the default JDK here, so the script runs the newer d8 from the command-line tools. On first run it creates a keystore at `~/.android/amrita-attendance.keystore` with the password `android`. Change that before you share a build.
 
 ```
 src/        MainActivity.java (screens, portal logic), Glass.java (visuals),
             AttendanceImport.java (copied-table parser)
-test/       host-side parser checks
+test/       host-side parser checks, mock portal, browser helper e2e test
+browser/    feedback helper userscript, bookmarklet and its builder
+assets/     the bookmarklet the app copies
 res/        icon, theme, strings
 docs/       screenshots and the IT request draft
 dist/       the built APK

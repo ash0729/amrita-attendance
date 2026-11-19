@@ -233,7 +233,7 @@ public class MainActivity extends Activity {
                     polling = false;
                     listPolling = false;
                     spinner.setVisibility(View.GONE);
-                    showBlocked(u.toString());
+                    portalBlocked(u.toString());
                 }
             }
         });
@@ -291,8 +291,7 @@ public class MainActivity extends Activity {
         setContentView(root);
 
         if (!handleSendIntent(getIntent())) {
-            boolean cached = showCached();
-            if (!cached) status.setText("Loading…");
+            if (!showSaved()) status.setText("Loading…");
             refresh();
         }
     }
@@ -506,7 +505,7 @@ public class MainActivity extends Activity {
             web.loadUrl(LISTS[kind]);
         } else {
             titleView.setText("Attendance");
-            if (!showCached()) status.setText("Loading…");
+            if (!showSaved()) status.setText("Loading…");
             refresh();
         }
     }
@@ -517,9 +516,10 @@ public class MainActivity extends Activity {
         web.evaluateJavascript(LIST_JS, value -> {
             try {
                 JSONObject o = new JSONObject((String) new JSONTokener(value).nextValue());
-                if (o.optBoolean("blocked")) { listPolling = false; showBlocked(LISTS[kind]); return; }
+                if (o.optBoolean("blocked")) { listPolling = false; portalBlocked(LISTS[kind]); return; }
                 if (o.getJSONArray("rows").length() > 0) {
                     listPolling = false;
+                    prefs.edit().putBoolean("blocked", false).apply();
                     spinner.setVisibility(View.GONE);
                     web.setVisibility(View.INVISIBLE);
                     renderList(o);
@@ -673,7 +673,11 @@ public class MainActivity extends Activity {
         final java.util.ArrayList<Integer> keep = new java.util.ArrayList<>();
         for (int i = 0; i < names.length(); i++) {
             java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(\\d{4})").matcher(names.optString(i));
-            if (!m.find() || Integer.parseInt(m.group(1)) <= currentStartYear()) keep.add(i);   // hide future terms
+            if (!m.find()) { keep.add(i); continue; }
+            int start = Integer.parseInt(m.group(1)), now = currentStartYear();
+            // Hide future terms: a later academic year, or this year's Even Sem while the Odd Sem is running.
+            boolean oddHalf = java.util.Calendar.getInstance().get(java.util.Calendar.MONTH) + 1 >= 7;
+            if (start < now || (start == now && !(oddHalf && names.optString(i).matches("(?i).*\\beven\\b.*")))) keep.add(i);
         }
         String[] items = new String[keep.size()];
         for (int i = 0; i < items.length; i++) items[i] = names.optString(keep.get(i));
@@ -700,7 +704,7 @@ public class MainActivity extends Activity {
             try {
                 String json = (String) new JSONTokener(value).nextValue();
                 JSONObject o = new JSONObject(json);
-                if (o.optBoolean("blocked")) { polling = false; showBlocked(URL); return; }
+                if (o.optBoolean("blocked")) { polling = false; portalBlocked(URL); return; }
                 JSONArray names = o.optJSONArray("terms"), ids = o.optJSONArray("ids");
                 int want = wantedTerm(names), sel = o.optInt("sel", -1);
                 if (want >= 0 && names.optString(want).equals(currentTermName()))   // remember its id to skip a hop next time
@@ -716,6 +720,7 @@ public class MainActivity extends Activity {
                     if (parse(o.getJSONArray("rows")).length() > 0) {
                         if (o.optString("term").equals(currentTermName())) // the saved copy is always the current semester
                             prefs.edit().putString("data", json).putLong("time", System.currentTimeMillis()).apply();
+                        prefs.edit().putBoolean("blocked", false).apply();
                         web.setVisibility(View.INVISIBLE);
                         spinner.setVisibility(View.GONE);
                         polling = false;
@@ -737,6 +742,18 @@ public class MainActivity extends Activity {
                 }
             }
         });
+    }
+
+    /** The portal refused the app: remember it, so the next launch shows the block card straight away. */
+    void portalBlocked(String url) {
+        prefs.edit().putBoolean("blocked", true).apply();
+        showBlocked(url);
+    }
+
+    /** Saved numbers, under the block card when the portal was refusing the app last time. */
+    boolean showSaved() {
+        if (prefs.getBoolean("blocked", false)) { showBlocked(URL); return true; }
+        return showCached();
     }
 
     boolean showCached() {
@@ -882,9 +899,11 @@ public class MainActivity extends Activity {
         ratingBar.setVisibility(View.GONE);
         boolean cached = !feedbackMode && showCached();
         if (!cached) list.removeAllViews();
+        boolean imported = cached && prefs.getString("data", "").contains("\"imported\":true");
         LinearLayout c = card();
         c.addView(text("The portal is blocking this app", 16, TXT, true));
-        String extra = feedbackMode ? "The feedback forms need the portal, so they stay closed for now. "
+        String extra = feedbackMode ? "Fill the forms in your phone's browser instead; the helper answers every question for you. "
+                : imported ? "Below are the numbers you imported. "
                 : cached ? "Below are the last numbers the app saved. "
                 : "You can bring your numbers in from Chrome. ";
         TextView why = text("students.amrita.edu now answers \u201CAccess denied. Custom Android applications are not "
@@ -900,7 +919,15 @@ public class MainActivity extends Activity {
             c.addView(imp, ilp);
         }
 
-        TextView open = action("Open in browser", feedbackMode);
+        if (feedbackMode) {
+            TextView helper = action("Fill feedback in the browser", true);
+            helper.setOnClickListener(v -> browserHelperDialog());
+            LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(-1, -2);
+            hlp.topMargin = dp(13);
+            c.addView(helper, hlp);
+        }
+
+        TextView open = action("Open in browser", false);
         open.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))));
         LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(-1, -2);
         olp.topMargin = dp(13);
@@ -913,7 +940,12 @@ public class MainActivity extends Activity {
         c.addView(official, flp);
 
         list.addView(c, 0);
-        status.setText(cached ? "Blocked by the portal \u00B7 showing saved numbers" : "Blocked by the portal");
+        String saved = "";
+        if (cached) {
+            saved = (imported ? " \u00B7 imported " : " \u00B7 saved ")
+                    + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date(prefs.getLong("time", 0)));
+        }
+        status.setText("Blocked by the portal" + saved);
     }
 
     TextView action(String label, boolean primary) {
@@ -923,6 +955,72 @@ public class MainActivity extends Activity {
         t.setBackground(primary ? Glass.selected(this, 21, ACCENT) : Glass.surface(this, 21));
         Glass.pressable(t);
         return t;
+    }
+
+    static final String USERSCRIPT_URL =
+            "https://github.com/ash0729/amrita-attendance/raw/main/browser/amrita-feedback.user.js";
+    static final String FIREFOX = "org.mozilla.firefox";
+
+    /** The portal blocks this app's WebView, so feedback moves to the phone's own browser. */
+    void browserHelperDialog() {
+        final boolean hasFirefox = getPackageManager().getLaunchIntentForPackage(FIREFOX) != null;
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(21), dp(8), dp(21), 0);
+        box.addView(text("You sign in and type the OTP; the helper picks the same answer for every question, "
+                + "presses Save & Next, and can press Finish.", 13, DIM, false));
+        TextView ff = text("Firefox" + (hasFirefox ? "" : " (not installed)"), 15, TXT, true);
+        ff.setPadding(0, dp(13), 0, dp(3));
+        box.addView(ff);
+        box.addView(text("1. In Firefox, add the Violentmonkey extension.\n"
+                + "2. Tap Install script below and confirm in Violentmonkey.\n"
+                + "3. Open the feedback list. The helper panel sits at the bottom.", 13, DIM, false));
+        TextView ch = text("Chrome or Brave", 15, TXT, true);
+        ch.setPadding(0, dp(13), 0, dp(3));
+        box.addView(ch);
+        box.addView(text("1. Tap Copy bookmarklet.\n"
+                + "2. Bookmark any page, edit the bookmark, paste over its URL, name it Feedback.\n"
+                + "3. On the feedback list, type Feedback in the address bar and tap the bookmark.", 13, DIM, false));
+        final android.app.AlertDialog d = new android.app.AlertDialog.Builder(this)
+                .setTitle("Feedback in the browser")
+                .setView(box)
+                .setPositiveButton("Install script", null)
+                .setNeutralButton("Copy bookmarklet", null)
+                .setNegativeButton("Open list", null)
+                .create();
+        d.setOnShowListener(x -> {
+            d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v ->
+                    openIn(hasFirefox ? FIREFOX : null, USERSCRIPT_URL));
+            d.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+                String js = asset("feedback-bookmarklet.txt");
+                if (js == null) { status.setText("Bookmarklet missing from this build"); return; }
+                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                cm.setPrimaryClip(ClipData.newPlainText("Feedback bookmarklet", js));
+                android.widget.Toast.makeText(this, "Bookmarklet copied", android.widget.Toast.LENGTH_SHORT).show();
+            });
+            d.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> {
+                d.dismiss();
+                openIn(null, LISTS[kind]);
+            });
+        });
+        d.show();
+    }
+
+    /** Opens a link in the given browser package, else in whatever handles it. */
+    void openIn(String pkg, String url) {
+        Intent i = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url));
+        if (pkg != null) i.setPackage(pkg);
+        try { startActivity(i); }
+        catch (Exception e) { i.setPackage(null); startActivity(i); }
+    }
+
+    String asset(String name) {
+        try (java.io.InputStream in = getAssets().open(name)) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+            return out.toString("UTF-8").trim();
+        } catch (Exception e) { return null; }
     }
 
     void openOfficial() {
@@ -976,7 +1074,7 @@ public class MainActivity extends Activity {
             saveImport(result, result.term.isEmpty() ? currentTermName() : result.term);
             return;
         }
-        if (!showCached()) list.removeAllViews();
+        if (!showSaved()) list.removeAllViews();
         importDialog(plain == null ? "" : plain, currentTermName(),
                 "Couldn't read a table from that. Copy the whole attendance table (with its numbers) and paste it again.");
     }

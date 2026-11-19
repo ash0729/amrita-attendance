@@ -10,7 +10,7 @@ OUT=build
 rm -rf $OUT && mkdir -p $OUT/classes
 
 $BT/aapt2 compile --dir res -o $OUT/res.zip
-$BT/aapt2 link -o $OUT/base.apk -I $JAR --manifest AndroidManifest.xml \
+$BT/aapt2 link -o $OUT/base.apk -I $JAR --manifest AndroidManifest.xml -A assets \
   --min-sdk-version 24 --target-sdk-version 34 --version-code 3 --version-name 1.2 $OUT/res.zip
 $JDK/bin/javac --release 8 -Xlint:-options -g:none -cp $JAR -d $OUT/classes $(find src -name '*.java')
 $JDK/bin/java -cp $SDK/cmdline-tools/latest/lib/r8.jar com.android.tools.r8.D8 --release --min-api 24 --lib $JAR --output $OUT $(find $OUT/classes -name '*.class')

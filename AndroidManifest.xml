@@ -7,6 +7,7 @@
     <!-- Android 11+ package visibility, so the app can open the official myAmrita app. -->
     <queries>
         <package android:name="com.myamrita.studentportal" />
+        <package android:name="org.mozilla.firefox" />
     </queries>
 
     <application
