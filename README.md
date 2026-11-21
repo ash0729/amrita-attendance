@@ -6,7 +6,7 @@ An Android app for the Amrita student portal. It shows your attendance without t
 |---|---|---|---|---|
 | ![Attendance, dark](docs/screenshots/attendance-dark.png) | ![Attendance, light](docs/screenshots/attendance-light.png) | ![Semester picker](docs/screenshots/attendance-semester-picker.png) | ![Feedback, blocked](docs/screenshots/feedback-blocked-dark.png) |
 
-**[Download the APK](dist/amrita-attendance.apk)** (version 1.5, Android 8.0 or newer, arm64). Also on the [Releases page](../../releases).
+**[Download the APK](https://github.com/ash0729/amrita-attendance/releases/latest)** (version 1.6, Android 8.0 or newer, arm64, about 190 MB because it carries its own Firefox engine for the app browser).
 
 ## Why I built this
 
@@ -135,7 +135,7 @@ The app gives every question the same answer. Choose the one you mean. The forms
 
 ## Install
 
-Download [`dist/amrita-attendance.apk`](dist/amrita-attendance.apk) on your phone, open it, and allow installs from your browser or file manager when Android asks. Or from a computer:
+Download `amrita-attendance.apk` from the [latest release](https://github.com/ash0729/amrita-attendance/releases/latest) on your phone, open it, and allow installs from your browser or file manager when Android asks. Or from a computer:
 
 ```
 adb install -r dist/amrita-attendance.apk
@@ -168,7 +168,7 @@ browser/    feedback helper, attendance handoff, bookmarklet and GeckoView exten
 assets/     generated bookmarklet used by the browser helper tests
 res/        icon, theme, strings
 docs/       screenshots and the IT request draft
-dist/       the built APK
+dist/       the built APK (not in git; attached to each release)
 ```
 
 ## License

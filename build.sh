@@ -22,5 +22,6 @@ export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$HOME/.gradle}"
 APK=build/outputs/apk/release/amrita-attendance-release.apk
 "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify "$APK"
 cp "$APK" amrita-attendance.apk
+mkdir -p dist
 cp "$APK" dist/amrita-attendance.apk
 sha256sum dist/amrita-attendance.apk

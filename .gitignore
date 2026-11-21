@@ -6,3 +6,5 @@ recordings/
 *.jks
 /amrita-attendance.apk
 *.hprof
+# Built APKs (~200 MB with GeckoView) go on the Releases page, not in git.
+dist/*.apk
