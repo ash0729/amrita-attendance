@@ -1,4 +1,5 @@
 build/
+.gradle/
 recordings/
 *.idsig
 *.keystore

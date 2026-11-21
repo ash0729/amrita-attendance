@@ -1,9 +1,6 @@
 package com.ash.attendance;
 
 import android.app.Activity;
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
@@ -14,7 +11,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewOutlineProvider;
@@ -24,7 +20,6 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -40,17 +35,18 @@ import java.util.Date;
 
 /**
  * Shows attendance from https://students.amrita.edu/client/class-attendance.
- * The portal uses Microsoft SSO, so the user signs in inside a WebView; the app then
- * reads the attendance table out of that signed-in page and renders it natively.
+ * The app reads the attendance table from its WebView, or from the embedded browser
+ * when the portal blocks the WebView, and renders it natively.
  * No password is ever seen or stored by the app.
  */
 public class MainActivity extends Activity {
     static final String URL = "https://students.amrita.edu/client/class-attendance";
     static final String HOST = "students.amrita.edu";
     static final int TARGET = 75; // minimum attendance percentage
+    static final int PICK_ATTENDANCE = 41;
 
     // Palette, filled in by applyTheme() from the phone's light/dark setting.
-    static int BG, TXT, DIM, ACCENT, GOOD, WARN, BAD, ON_GOOD, ON_SEL;
+    static int BG, TXT, DIM, TER, ACCENT, GOOD, WARN, BAD, ON_GOOD, ON_SEL;
     static boolean dark = true;
 
     // True when the portal answers with its "Custom Android applications are not allowed" page.
@@ -77,6 +73,7 @@ public class MainActivity extends Activity {
     Glass.Backdrop backdrop;
     final TextView[] navTabs = new TextView[2];
     LinearLayout ratingBar;
+    Glass.Segmented nav, seg;
     int autoRating;      // 0 = autofill off, else 1..5
     String lastQid;      // loop guard: question id we last tried to save
     int pollTries;
@@ -138,21 +135,29 @@ public class MainActivity extends Activity {
         }
 
         FrameLayout root = new FrameLayout(this);
+        root.setClipChildren(false);
+        // The stage is everything the floating nav blurs; the nav itself sits above it, outside the stage.
+        FrameLayout stage = new FrameLayout(this);
+        stage.setClipChildren(false);
+        root.addView(stage, new FrameLayout.LayoutParams(-1, -1));
         backdrop = new Glass.Backdrop(this);
-        root.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
+        stage.addView(backdrop, new FrameLayout.LayoutParams(-1, -1));
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
         content.setFitsSystemWindows(true);
-        root.addView(content, new FrameLayout.LayoutParams(-1, -1));
+        content.setClipChildren(false);
+        stage.addView(content, new FrameLayout.LayoutParams(-1, -1));
 
         // Header: title + live status on the left, refresh on the right.
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(21), dp(13), dp(13), dp(8));
+        bar.setPadding(dp(20), dp(13), dp(20), dp(8));
+        bar.setClipChildren(false);
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
-        titleView = text("Attendance", 23, TXT, true);
+        titleView = text("Attendance", 30, TXT, true);
+        titleView.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         status = text("", 13, DIM, false);
         status.setPadding(0, dp(2), 0, 0);
         titles.addView(titleView);
@@ -166,17 +171,13 @@ public class MainActivity extends Activity {
         bar.addView(spinner, sp);
         final TextView refresh = text("\u21BB", 21, TXT, false);
         refresh.setGravity(Gravity.CENTER);
-        refresh.setBackground(Glass.surface(this, 24));
-        refresh.setContentDescription("Refresh \u00B7 long-press to import");
+        refresh.setBackground(Glass.surface(this, 99));
+        refresh.setContentDescription("Refresh attendance");
         Glass.pressable(refresh);
         refresh.setOnClickListener(v -> {
             refresh.animate().rotationBy(360f).setDuration(520).start();
             if (feedbackMode) { listPolling = false; spinner.setVisibility(View.VISIBLE); web.loadUrl(LISTS[kind]); }
             else refresh();
-        });
-        refresh.setOnLongClickListener(v -> {
-            importDialog("", currentTermName(), null);
-            return true;
         });
         bar.addView(refresh, new LinearLayout.LayoutParams(dp(48), dp(48)));
         content.addView(bar);
@@ -190,11 +191,12 @@ public class MainActivity extends Activity {
         scroll = new ScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        scroll.setVerticalFadingEdgeEnabled(true);
-        scroll.setFadingEdgeLength(dp(34));
+        scroll.setClipToPadding(false);
+        scroll.setClipChildren(false);
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(dp(13), dp(5), dp(13), dp(21));
+        list.setPadding(dp(20), dp(5), dp(20), dp(110));
+        list.setClipChildren(false);
         scroll.addView(list);
         body.addView(scroll);
 
@@ -242,18 +244,18 @@ public class MainActivity extends Activity {
             @Override
             public boolean onJsConfirm(WebView v, String url, String message, android.webkit.JsResult r) {
                 if (autoConfirm) { r.confirm(); return true; } // auto mode: the user already opted in
-                new android.app.AlertDialog.Builder(MainActivity.this).setMessage(message)
+                glassDialog(new android.app.AlertDialog.Builder(MainActivity.this).setMessage(message)
                         .setPositiveButton("OK", (d, w) -> r.confirm())
                         .setNegativeButton("Cancel", (d, w) -> { finishCancelled = true; r.cancel(); })
-                        .setOnCancelListener(d -> { finishCancelled = true; r.cancel(); }).show();
+                        .setOnCancelListener(d -> { finishCancelled = true; r.cancel(); }).create());
                 return true;
             }
 
             @Override
             public boolean onJsAlert(WebView v, String url, String message, android.webkit.JsResult r) {
-                new android.app.AlertDialog.Builder(MainActivity.this).setMessage(message)
+                glassDialog(new android.app.AlertDialog.Builder(MainActivity.this).setMessage(message)
                         .setPositiveButton("OK", (d, w) -> r.confirm())
-                        .setOnCancelListener(d -> r.confirm()).show();
+                        .setOnCancelListener(d -> r.confirm()).create());
                 return true;
             }
         });
@@ -261,39 +263,42 @@ public class MainActivity extends Activity {
         web.setBackgroundColor(Color.TRANSPARENT);
         web.setOutlineProvider(new ViewOutlineProvider() {
             @Override
-            public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), dp(21)); }
+            public void getOutline(View v, Outline o) { o.setRoundRect(0, 0, v.getWidth(), v.getHeight(), dp(28)); }
         });
         web.setClipToOutline(true);
         FrameLayout.LayoutParams wlp = new FrameLayout.LayoutParams(-1, -1);
-        wlp.setMargins(dp(13), dp(5), dp(13), dp(5));
+        wlp.setMargins(dp(20), dp(5), dp(20), dp(94));
         body.addView(web, wlp);
         content.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        // Floating glass tab bar at the bottom: within thumb reach, always shows where you are.
-        LinearLayout nav = new LinearLayout(this);
-        nav.setPadding(dp(5), dp(5), dp(5), dp(5));
-        nav.setBackground(Glass.surface(this, 29));
+        // Floating glass tab bar: blurs the stage behind it on API 31+, plain glass elsewhere.
+        nav = new Glass.Segmented(this, 99, false, 14, 5);
+        nav.setSource(stage, web);
         String[] names = {"Attendance", "Feedback"};
         for (int i = 0; i < 2; i++) {
-            TextView t = text(names[i], 14, DIM, true);
+            TextView t = text(names[i], 13, DIM, false);
+            t.setTypeface(Glass.medium());
             t.setGravity(Gravity.CENTER);
-            t.setPadding(0, dp(13), 0, dp(13));
+            t.setPadding(0, dp(14), 0, dp(14));
             Glass.pressable(t);
             final int which = i;
             t.setOnClickListener(v -> setMode(which == 1));
             navTabs[i] = t;
-            nav.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+            nav.addTab(t);
         }
-        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(-1, -2);
-        nlp.setMargins(dp(21), dp(5), dp(21), dp(13));
-        content.addView(nav, nlp);
+        final FrameLayout.LayoutParams nlp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+        nlp.setMargins(dp(20), 0, dp(20), dp(13));
+        root.addView(nav, nlp);
+        root.setOnApplyWindowInsetsListener((v, ins) -> {
+            nlp.bottomMargin = dp(13) + ins.getSystemWindowInsetBottom();
+            nav.setLayoutParams(nlp);
+            return ins;
+        });
         updateNav();
         setContentView(root);
 
-        if (!handleSendIntent(getIntent())) {
-            if (!showSaved()) status.setText("Loading…");
-            refresh();
-        }
+        if (!showSaved()) status.setText("Loading…");
+        refresh();
     }
 
     /** Black glass on a dark phone, white glass on a light one. */
@@ -302,10 +307,10 @@ public class MainActivity extends Activity {
                 == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         Glass.dark = dark;
         if (dark) {
-            BG = 0xFF000000; TXT = 0xFFF5F5F7; DIM = 0xFF8E8E93; ACCENT = 0xFFFFA048;
+            BG = 0xFF000000; TXT = 0xFFF5F5F7; DIM = 0x99F5F5F7; TER = 0x61F5F5F7; ACCENT = 0xFFFFA048;
             GOOD = 0xFF30D158; WARN = 0xFFFFD60A; BAD = 0xFFFF453A; ON_GOOD = Color.WHITE;
         } else {
-            BG = 0xFFF5F6F8; TXT = 0xFF0B0B0F; DIM = 0xFF6B6F80; ACCENT = 0xFF0A6CFF;
+            BG = 0xFFF5F6F8; TXT = 0xFF0B0B0F; DIM = 0x990B0B0F; TER = 0x610B0B0F; ACCENT = 0xFF0A6CFF;
             GOOD = 0xFF1A9D4A; WARN = 0xFFC77700; BAD = 0xFFD92D20; ON_GOOD = Color.WHITE;
         }
         ON_SEL = dark ? ACCENT : Color.WHITE; // dark: orange label on grey glass
@@ -315,24 +320,24 @@ public class MainActivity extends Activity {
     void buildRatingPanel() {
         ratingBar.setOrientation(LinearLayout.VERTICAL);
         ratingBar.setPadding(dp(13), dp(13), dp(13), dp(13));
-        ratingBar.setBackground(Glass.surface(this, 21));
+        ratingBar.setBackground(Glass.card(this, 28));
+        ratingBar.setClipChildren(false);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
-        lp.setMargins(dp(13), 0, dp(13), dp(8));
+        lp.setMargins(dp(20), 0, dp(20), dp(8));
         ratingBar.setLayoutParams(lp);
 
         // Segmented control: course feedback / class TLP.
-        LinearLayout seg = new LinearLayout(this);
-        seg.setPadding(dp(3), dp(3), dp(3), dp(3));
-        seg.setBackground(Glass.surface(this, 16));
+        seg = new Glass.Segmented(this, 99, false, 6, 3);
         String[] tabNames = {"Course feedback", "Class TLP"};
         for (int t = 0; t < 2; t++) {
-            TextView tb = text(tabNames[t], 13, DIM, true);
+            TextView tb = text(tabNames[t], 13, DIM, false);
+            tb.setTypeface(Glass.medium());
             tb.setGravity(Gravity.CENTER);
             tb.setPadding(0, dp(8), 0, dp(8));
             final int which = t;
             tb.setOnClickListener(v -> switchKind(which));
             tabs[t] = tb;
-            seg.addView(tb, new LinearLayout.LayoutParams(0, -2, 1));
+            seg.addTab(tb);
         }
         ratingBar.addView(seg);
 
@@ -383,14 +388,10 @@ public class MainActivity extends Activity {
     void updateRatingUi() {
         for (int i = 0; i < 5; i++) {
             boolean sel = i + 1 == rating;
-            chips[i].setBackground(sel ? Glass.selected(this, 16, ACCENT) : Glass.surface(this, 16));
+            chips[i].setBackground(sel ? Glass.selected(this, 99, ACCENT) : Glass.surface(this, 99));
             chips[i].setTextColor(sel ? ON_SEL : TXT);
         }
-        for (int i = 0; i < 2; i++) {
-            boolean sel = i == kind;
-            tabs[i].setBackground(sel ? Glass.selected(this, 13, ACCENT) : null);
-            tabs[i].setTextColor(sel ? ON_SEL : DIM);
-        }
+        seg.select(kind, true);
         ratingLabel.setText((kind == 0 ? "Every question: " + rating + " · " + LABELS[rating - 1]
                                        : "Every question: choice number " + rating + " (1 = first option)")
                 + (autoMode ? "\nAuto is on: after the OTP it answers, saves, finishes and submits."
@@ -398,15 +399,24 @@ public class MainActivity extends Activity {
     }
 
     void updateNav() {
-        for (int i = 0; i < 2; i++) {
-            boolean sel = (i == 1) == feedbackMode;
-            navTabs[i].setBackground(sel ? Glass.selected(this, 24, ACCENT) : null);
-            navTabs[i].setTextColor(sel ? ON_SEL : DIM);
-        }
+        nav.select(feedbackMode ? 1 : 0, true);
     }
 
     void setMode(boolean feedback) {
         if (feedback != feedbackMode) toggleFeedback();
+    }
+
+    /** Shows the dialog on a rounded glass sheet with themed text. */
+    void glassDialog(android.app.AlertDialog d) {
+        d.show();
+        if (d.getWindow() != null)
+            d.getWindow().setBackgroundDrawable(new android.graphics.drawable.InsetDrawable(Glass.sheet(this), dp(13)));
+        TextView m = d.findViewById(android.R.id.message);
+        if (m != null) { m.setTextColor(TXT); m.setTextSize(16); m.setLineSpacing(0f, 1.12f); }
+        for (int w : new int[]{android.app.AlertDialog.BUTTON_POSITIVE, android.app.AlertDialog.BUTTON_NEGATIVE}) {
+            Button bt = d.getButton(w);
+            if (bt != null) bt.setTextColor(w == android.app.AlertDialog.BUTTON_POSITIVE ? ACCENT : DIM);
+        }
     }
 
     void startAuto(int r) {
@@ -805,7 +815,7 @@ public class MainActivity extends Activity {
                 A += courses.getJSONObject(i).getInt("attended");
             }
             String term = data.optString("term", "");
-            String when = data.optBoolean("imported") ? "imported " : (cached ? "saved " : "updated ");
+            String when = cached ? "saved " : "updated ";
             status.setText((term.isEmpty() ? "" : term + " · ") + when
                     + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date(time)));
 
@@ -837,7 +847,7 @@ public class MainActivity extends Activity {
             col.setOrientation(LinearLayout.VERTICAL);
             col.setPadding(dp(21), 0, 0, 0);
             col.addView(text("Overall attendance", 13, DIM, false));
-            col.addView(text(A + " of " + T + " classes", 16, TXT, true));
+            col.addView(text(A + " of " + T + " classes", 20, TXT, true));
             col.addView(pill(advice(A, T), overall >= 80 ? DIM : colorFor(overall)));
             head.addView(col, new LinearLayout.LayoutParams(0, -2, 1));
             list.addView(head);
@@ -856,7 +866,7 @@ public class MainActivity extends Activity {
                 LinearLayout row = new LinearLayout(this);
                 row.setGravity(Gravity.CENTER_VERTICAL);
                 row.setPadding(0, dp(13), 0, dp(8));
-                TextView pct = text("", 23, col2, false);
+                TextView pct = text("", 22, col2, false);
                 pct.setTypeface(Glass.light());
                 Glass.countUp(pct, p, p >= 80 ? TXT : col2);
                 row.addView(pct);
@@ -892,43 +902,36 @@ public class MainActivity extends Activity {
 
     static int colorFor(double p) { return p >= 80 ? (dark ? GOOD : ACCENT) : p >= TARGET ? WARN : BAD; }
 
-    /** The portal refused the app. Say so, keep the saved numbers, and offer a way to bring them in. */
+    /** The portal refused the app. Keep the saved numbers and offer its in-app browser. */
     void showBlocked(final String url) {
         spinner.setVisibility(View.GONE);
         web.setVisibility(View.INVISIBLE);
         ratingBar.setVisibility(View.GONE);
         boolean cached = !feedbackMode && showCached();
         if (!cached) list.removeAllViews();
-        boolean imported = cached && prefs.getString("data", "").contains("\"imported\":true");
         LinearLayout c = card();
         c.addView(text("The portal is blocking this app", 16, TXT, true));
         String extra = feedbackMode ? "Fill the forms in your phone's browser instead; the helper answers every question for you. "
-                : imported ? "Below are the numbers you imported. "
                 : cached ? "Below are the last numbers the app saved. "
-                : "You can bring your numbers in from Chrome. ";
+                : "Sign in to the attendance page in the app browser, then send its table back here. ";
         TextView why = text("students.amrita.edu now answers \u201CAccess denied. Custom Android applications are not "
                 + "allowed.\u201D " + extra, 13, DIM, false);
         why.setPadding(0, dp(5), 0, 0);
         c.addView(why);
 
-        if (!feedbackMode) {
-            TextView imp = action("Import from clipboard", true);
-            imp.setOnClickListener(v -> importFromClipboard());
-            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(-1, -2);
-            ilp.topMargin = dp(13);
-            c.addView(imp, ilp);
-        }
-
         if (feedbackMode) {
-            TextView helper = action("Fill feedback in the browser", true);
-            helper.setOnClickListener(v -> browserHelperDialog());
+            TextView helper = action("Fill feedback in the app browser", true);
+            helper.setOnClickListener(v -> startActivity(BrowserActivity.intent(this, LISTS[kind])));
             LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(-1, -2);
             hlp.topMargin = dp(13);
             c.addView(helper, hlp);
         }
 
-        TextView open = action("Open in browser", false);
-        open.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))));
+        TextView open = action(feedbackMode ? "Open in app browser" : "Get attendance from browser", !feedbackMode);
+        open.setOnClickListener(v -> {
+            if (feedbackMode) startActivity(BrowserActivity.intent(this, url));
+            else openAttendanceBrowser(url);
+        });
         LinearLayout.LayoutParams olp = new LinearLayout.LayoutParams(-1, -2);
         olp.topMargin = dp(13);
         c.addView(open, olp);
@@ -940,11 +943,8 @@ public class MainActivity extends Activity {
         c.addView(official, flp);
 
         list.addView(c, 0);
-        String saved = "";
-        if (cached) {
-            saved = (imported ? " \u00B7 imported " : " \u00B7 saved ")
-                    + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date(prefs.getLong("time", 0)));
-        }
+        String saved = cached ? " \u00B7 saved "
+                + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(new Date(prefs.getLong("time", 0))) : "";
         status.setText("Blocked by the portal" + saved);
     }
 
@@ -952,75 +952,9 @@ public class MainActivity extends Activity {
         TextView t = text(label, 14, primary ? ON_SEL : TXT, true);
         t.setGravity(Gravity.CENTER);
         t.setPadding(0, dp(13), 0, dp(13));
-        t.setBackground(primary ? Glass.selected(this, 21, ACCENT) : Glass.surface(this, 21));
+        t.setBackground(primary ? Glass.selected(this, 99, ACCENT) : Glass.surface(this, 99));
         Glass.pressable(t);
         return t;
-    }
-
-    static final String USERSCRIPT_URL =
-            "https://github.com/ash0729/amrita-attendance/raw/main/browser/amrita-feedback.user.js";
-    static final String FIREFOX = "org.mozilla.firefox";
-
-    /** The portal blocks this app's WebView, so feedback moves to the phone's own browser. */
-    void browserHelperDialog() {
-        final boolean hasFirefox = getPackageManager().getLaunchIntentForPackage(FIREFOX) != null;
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(21), dp(8), dp(21), 0);
-        box.addView(text("You sign in and type the OTP; the helper picks the same answer for every question, "
-                + "presses Save & Next, and can press Finish.", 13, DIM, false));
-        TextView ff = text("Firefox" + (hasFirefox ? "" : " (not installed)"), 15, TXT, true);
-        ff.setPadding(0, dp(13), 0, dp(3));
-        box.addView(ff);
-        box.addView(text("1. In Firefox, add the Violentmonkey extension.\n"
-                + "2. Tap Install script below and confirm in Violentmonkey.\n"
-                + "3. Open the feedback list. The helper panel sits at the bottom.", 13, DIM, false));
-        TextView ch = text("Chrome or Brave", 15, TXT, true);
-        ch.setPadding(0, dp(13), 0, dp(3));
-        box.addView(ch);
-        box.addView(text("1. Tap Copy bookmarklet.\n"
-                + "2. Bookmark any page, edit the bookmark, paste over its URL, name it Feedback.\n"
-                + "3. On the feedback list, type Feedback in the address bar and tap the bookmark.", 13, DIM, false));
-        final android.app.AlertDialog d = new android.app.AlertDialog.Builder(this)
-                .setTitle("Feedback in the browser")
-                .setView(box)
-                .setPositiveButton("Install script", null)
-                .setNeutralButton("Copy bookmarklet", null)
-                .setNegativeButton("Open list", null)
-                .create();
-        d.setOnShowListener(x -> {
-            d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v ->
-                    openIn(hasFirefox ? FIREFOX : null, USERSCRIPT_URL));
-            d.getButton(android.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
-                String js = asset("feedback-bookmarklet.txt");
-                if (js == null) { status.setText("Bookmarklet missing from this build"); return; }
-                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                cm.setPrimaryClip(ClipData.newPlainText("Feedback bookmarklet", js));
-                android.widget.Toast.makeText(this, "Bookmarklet copied", android.widget.Toast.LENGTH_SHORT).show();
-            });
-            d.getButton(android.app.AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> {
-                d.dismiss();
-                openIn(null, LISTS[kind]);
-            });
-        });
-        d.show();
-    }
-
-    /** Opens a link in the given browser package, else in whatever handles it. */
-    void openIn(String pkg, String url) {
-        Intent i = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url));
-        if (pkg != null) i.setPackage(pkg);
-        try { startActivity(i); }
-        catch (Exception e) { i.setPackage(null); startActivity(i); }
-    }
-
-    String asset(String name) {
-        try (java.io.InputStream in = getAssets().open(name)) {
-            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-            byte[] buf = new byte[8192];
-            for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
-            return out.toString("UTF-8").trim();
-        } catch (Exception e) { return null; }
     }
 
     void openOfficial() {
@@ -1028,136 +962,42 @@ public class MainActivity extends Activity {
         if (i != null) {
             try { startActivity(i); return; } catch (Exception ignored) { }
         }
-        startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(URL)));
+        openAttendanceBrowser(URL);
     }
 
-    /** A table shared from Chrome or another app. Returns true when this intent was a share. */
-    boolean handleSendIntent(Intent intent) {
-        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return false;
-        CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
-        if (text == null) return false;
-        intent.removeExtra(Intent.EXTRA_TEXT); // a recreated activity must not import it again
-        String s = text.toString();
-        if (s.length() > 200000) s = s.substring(0, 200000);
-        runImport(s, null);
-        return true;
+    void openAttendanceBrowser(String url) {
+        startActivityForResult(BrowserActivity.intent(this, url), PICK_ATTENDANCE);
     }
 
-    void importFromClipboard() {
-        String plain = null, html = null;
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != PICK_ATTENDANCE || resultCode != RESULT_OK || data == null) return;
         try {
-            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-            if (cm != null && cm.hasPrimaryClip()) {
-                ClipData clip = cm.getPrimaryClip();
-                if (clip != null && clip.getItemCount() > 0) {
-                    ClipData.Item item = clip.getItemAt(0);
-                    CharSequence h = item.getHtmlText();
-                    if (h != null) html = h.toString();
-                    CharSequence t = item.coerceToText(this);
-                    if (t != null) plain = t.toString();
-                }
+            JSONObject attendance = new JSONObject(data.getStringExtra(BrowserActivity.EXTRA_ATTENDANCE_JSON));
+            if (parse(attendance.getJSONArray("rows")).length() == 0) {
+                status.setText("No attendance table found in the browser page");
+                return;
             }
-        } catch (Exception ignored) { }
-        if ((plain == null || plain.trim().isEmpty()) && (html == null || html.trim().isEmpty())) {
-            showBlocked(URL);
-            importDialog("", currentTermName(), "The clipboard is empty. Copy the attendance table first.");
-            return;
-        }
-        runImport(plain, html);
-    }
-
-    void runImport(String plain, String html) {
-        AttendanceImport.Result result = new AttendanceImport.Result("", new java.util.ArrayList<String[]>());
-        if (html != null) result = AttendanceImport.parseHtml(html);
-        if (result.rows.isEmpty() && plain != null) result = AttendanceImport.parseText(plain);
-        if (!result.rows.isEmpty()) {
-            saveImport(result, result.term.isEmpty() ? currentTermName() : result.term);
-            return;
-        }
-        if (!showSaved()) list.removeAllViews();
-        importDialog(plain == null ? "" : plain, currentTermName(),
-                "Couldn't read a table from that. Copy the whole attendance table (with its numbers) and paste it again.");
-    }
-
-    void importDialog(final String prefill, String term, String error) {
-        LinearLayout box = new LinearLayout(this);
-        box.setOrientation(LinearLayout.VERTICAL);
-        box.setPadding(dp(21), dp(8), dp(21), 0);
-        box.addView(text("In Chrome, open the attendance page, select the table and Copy. Paste it below. "
-                + "One CSV row per course also works.", 13, DIM, false));
-        final EditText paste = new EditText(this);
-        paste.setTextSize(12);
-        paste.setMinLines(5);
-        paste.setMaxLines(9);
-        paste.setGravity(Gravity.TOP | Gravity.START);
-        paste.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE
-                | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        paste.setHint("Paste the attendance table here");
-        paste.setText(prefill);
-        box.addView(paste);
-        final EditText termBox = new EditText(this);
-        termBox.setTextSize(14);
-        termBox.setSingleLine(true);
-        termBox.setHint("Semester");
-        termBox.setText(term);
-        box.addView(termBox);
-        final TextView err = text(error == null ? "" : error, 12, BAD, false);
-        err.setPadding(0, dp(5), 0, 0);
-        box.addView(err);
-
-        final android.app.AlertDialog dialog = new android.app.AlertDialog.Builder(this)
-                .setTitle("Import attendance")
-                .setView(box)
-                .setPositiveButton("Import", null)
-                .setNegativeButton("Cancel", null)
-                .create();
-        dialog.setOnShowListener(x -> dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
-                .setOnClickListener(v -> {
-                    AttendanceImport.Result r = AttendanceImport.parseText(paste.getText().toString());
-                    if (r.rows.isEmpty()) {
-                        err.setText("No attendance rows found. The table needs Total, Present, Absent and Percentage.");
-                        return;
-                    }
-                    String t = termBox.getText().toString().trim();
-                    if (t.isEmpty()) t = r.term.isEmpty() ? currentTermName() : r.term;
-                    dialog.dismiss();
-                    saveImport(r, t);
-                }));
-        dialog.show();
-    }
-
-    void saveImport(AttendanceImport.Result result, String term) {
-        try {
-            JSONArray rows = new JSONArray();
-            for (String[] row : result.rows) rows.put(new JSONArray(java.util.Arrays.asList(row)));
-            JSONObject o = new JSONObject();
-            o.put("term", term);
-            o.put("terms", new JSONArray().put(term));
-            o.put("ids", new JSONArray().put(""));
-            o.put("imported", true);
-            o.put("rows", rows);
-            prefs.edit().putString("data", o.toString()).putLong("time", System.currentTimeMillis()).apply();
-            if (feedbackMode) {
-                feedbackMode = false;
-                polling = false;
-                listPolling = false;
-                ratingBar.setVisibility(View.GONE);
-                titleView.setText("Attendance");
-                updateNav();
-            }
-            showBlocked(URL);
-            status.setText("Imported " + result.rows.size() + " course"
-                    + (result.rows.size() == 1 ? "" : "s") + " \u00B7 " + term);
+            String term = attendance.optString("term", "");
+            if (term.isEmpty()) attendance.put("term", term = currentTermName());
+            if (!attendance.has("terms")) attendance.put("terms", new JSONArray().put(term));
+            if (!attendance.has("ids")) attendance.put("ids", new JSONArray().put(""));
+            long now = System.currentTimeMillis();
+            prefs.edit().putString("data", attendance.toString()).putLong("time", now).apply();
+            if (prefs.getBoolean("blocked", false)) showBlocked(URL);
+            else render(attendance, now, true);
+            status.setText("Attendance saved from browser \u00B7 " + term);
         } catch (Exception e) {
-            status.setText("Import failed: " + e.getMessage());
+            status.setText("Couldn't read attendance from the browser page");
         }
     }
 
     LinearLayout card() {
         LinearLayout l = new LinearLayout(this);
         l.setOrientation(LinearLayout.VERTICAL);
-        l.setPadding(dp(21), dp(16), dp(21), dp(16));
-        l.setBackground(Glass.surface(this, 21));
+        l.setPadding(dp(20), dp(16), dp(20), dp(16));
+        l.setBackground(Glass.card(this, 21));
+        l.setClipChildren(false);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, dp(6), 0, dp(6));
         l.setLayoutParams(lp);
@@ -1179,6 +1019,7 @@ public class MainActivity extends Activity {
         TextView t = new TextView(this);
         t.setText(s);
         t.setTextSize(sp);
+        t.setLineSpacing(0f, 1.12f);
         t.setTextColor(color);
         t.setTypeface(bold ? Glass.medium() : Typeface.DEFAULT);
         return t;
@@ -1190,13 +1031,6 @@ public class MainActivity extends Activity {
     public void onBackPressed() {
         if (web.getVisibility() == View.VISIBLE && web.canGoBack()) web.goBack();
         else super.onBackPressed();
-    }
-
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
-        handleSendIntent(intent);
     }
 
     @Override

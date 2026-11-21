@@ -1,0 +1,66 @@
+plugins {
+    id 'com.android.application' version '9.1.1'
+}
+
+def keyPath = providers.gradleProperty('attendanceKeystore')
+        .orElse("${System.getProperty('user.home')}/.android/amrita-attendance.keystore")
+def keyPasswordValue = providers.gradleProperty('attendanceKeyPassword').orElse('android')
+
+android {
+    namespace 'com.ash.attendance'
+    compileSdk 37
+
+    defaultConfig {
+        applicationId 'com.ash.attendance'
+        minSdk 26
+        targetSdk 34
+        versionCode 6
+        versionName '1.5'
+        ndk { abiFilters 'arm64-v8a' }
+    }
+
+    signingConfigs {
+        release {
+            storeFile file(keyPath.get())
+            storePassword keyPasswordValue.get()
+            keyAlias 'key'
+            keyPassword keyPasswordValue.get()
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src']
+            res.srcDirs = ['res']
+            assets.srcDirs = ['assets', layout.buildDirectory.dir('generated/gecko-assets')]
+        }
+    }
+}
+
+dependencies {
+    implementation 'org.mozilla.geckoview:geckoview-arm64-v8a:160.0.20261116130455'
+}
+
+tasks.register('prepareEmbeddedFeedback', Sync) {
+    from('browser/amrita-feedback.user.js')
+    from('browser/geckoview/manifest.json')
+    from('browser/geckoview/attendance-bridge.js')
+    into(layout.buildDirectory.dir('generated/gecko-assets/geckoview-feedback'))
+}
+
+tasks.named('preBuild').configure {
+    dependsOn tasks.named('prepareEmbeddedFeedback')
+}

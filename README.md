@@ -4,10 +4,9 @@ An Android app for the Amrita student portal. It shows your attendance without t
 
 | | | | | |
 |---|---|---|---|---|
-| ![Attendance, dark](docs/screenshots/attendance-dark.png) | ![Attendance, light](docs/screenshots/attendance-light.png) | ![Semester picker](docs/screenshots/attendance-semester-picker.png) | ![Import dialog](docs/screenshots/import-dark.png) | ![Feedback, blocked](docs/screenshots/feedback-blocked-dark.png) |
+| ![Attendance, dark](docs/screenshots/attendance-dark.png) | ![Attendance, light](docs/screenshots/attendance-light.png) | ![Semester picker](docs/screenshots/attendance-semester-picker.png) | ![Feedback, blocked](docs/screenshots/feedback-blocked-dark.png) |
 
-**[Download the APK](dist/amrita-attendance.apk)** (version 1.2, Android 7.0 or newer, 45 KB). Also on the [Releases page](../../releases).
-SHA-256: `e80d37ffc7d7a2fe00b3ac5530762ed24948152f4bcb5cb16031c62489f576c3`
+**[Download the APK](dist/amrita-attendance.apk)** (version 1.5, Android 8.0 or newer, arm64). Also on the [Releases page](../../releases).
 
 ## Why I built this
 
@@ -31,20 +30,23 @@ On 19 November 2026 students.amrita.edu started answering this app with:
 
 > Access denied. Custom Android applications are not allowed.
 
-That is a deliberate rule, not a parsing bug. The app no longer reads the denial page as an empty semester: both tabs show a card that says the portal is blocking the app, keep the last numbers it saved, and offer three actions — import a table from Chrome, open the page in the browser, or open the official myAmrita app.
+That is a deliberate rule, not a parsing bug. The app no longer reads the denial page as an empty semester: both tabs show a card that says the portal is blocking the app and keeps the last numbers it saved. From Attendance, you can sign in through the embedded browser and send the table back to the app, or open the official myAmrita app.
 
 **Desktop mode does not get around it.** Desktop mode only changes the WebView's User-Agent. An Android WebView still adds `X-Requested-With: com.ash.attendance` to every request, still carries the `wv` token in its default UA, and still sends `Sec-CH-UA` client hints that name Android WebView. Removing those would mean proxying every request through the app's own HTTP client to hide that it comes from an app — exactly the behaviour the rule exists to stop. I am not doing that.
 
-If Amrita IT allows a student-built client or provides an API, live attendance and feedback can come back. Until then the app is a viewer for saved and imported numbers, and the official app is one tap away.
+If Amrita IT allows a student-built client or provides an API, live attendance and feedback can come back. Until then the app is a viewer for saved numbers, and the official app is one tap away.
 
-## Feedback in your browser
+## Browser inside the app
 
-The official app has no feedback section, and the portal now refuses this app, so the feedback filler moved into the phone's browser. It is one script, [`browser/amrita-feedback.user.js`](browser/amrita-feedback.user.js), that runs on the portal's feedback pages in a browser you are already signed in to. It is the same browser and the same login you would use by hand, and the script doesn't disguise anything.
+The **Open in app browser** button opens a browser screen powered by [Mozilla GeckoView](https://mozilla.github.io/geckoview/consumer/), the Firefox browser engine. It has an address bar, Back, Forward and Reload controls. You can sign in and open the portal without switching to Firefox or Chrome.
 
-- **Firefox:** add the Violentmonkey extension, then open the script's raw link and install it. It runs on every feedback page by itself.
-- **Chrome or Brave:** these don't run userscripts on Android, so use the bookmarklet. In the app, Feedback → *Fill feedback in the browser* → *Copy bookmarklet*. Bookmark any page, edit the bookmark, paste the copied text over its URL and name it Feedback. On the feedback list, type Feedback in the address bar and tap the bookmark. A bookmarklet stops when the page reloads, and every Save & Next reloads it, so the bookmarklet opens the portal inside a frame on the same page and drives it from outside.
+The browser keeps its own cookies inside the app. They are separate from the app's older WebView session and from Firefox or Chrome. The app uses GeckoView's normal page loading; it does not rewrite browser headers or user-agent strings. The portal may still block the embedded browser.
 
-A panel at the bottom works like the app's rating bar: pick 1 to 5, optionally turn on *Finish & submit by itself*, and tap *Open next pending*. You still press Send OTP and type the code; the panel steps out of the way while the keyboard is open. It then answers every question, presses Save & Next, and with the switch on presses Finish, accepts "Are you sure?" and goes back to the list. It stops and says why on a save that doesn't advance or a question with fewer options than your number. It makes no network requests of its own and never touches a login field.
+On the attendance page, the browser reads the visible table locally. Tap **Use attendance · [term]** to send it to the app, where the numbers are saved and shown in the attendance cards. There is no copy/paste step.
+
+The app bundles [`browser/amrita-feedback.user.js`](browser/amrita-feedback.user.js) as a built-in GeckoView extension. From the feedback tab, tap **Fill feedback in the app browser**. The helper appears on matching portal pages, so there is no separate extension or bookmarklet to install.
+
+The helper panel lets you pick a rating from 1 to 5, turn on **Finish & submit by itself**, and open the next pending form. You still press Send OTP and enter the code. The helper answers each question and saves it; with the switch on, it can also finish the form and return to the list. It makes no network requests of its own and does not touch login fields.
 
 ## What it does
 
@@ -57,13 +59,13 @@ Attendance
 - Opens on the current semester, like the official app, and a picker switches to any earlier one. A pick lasts until you close the app, so the next launch starts on the current semester again.
 - Keeps the last numbers, so it opens instantly with what it saw last time.
 - When the portal blocks the app, says so instead of showing an empty semester, and keeps the saved numbers below the card.
-- Import from clipboard: in Chrome, sign in, select the attendance table and copy it, then paste it into the app (or share the selection to the app). It accepts the rich-text table, tab-separated text, 2+ spaces, or one CSV row per course. The results render exactly like a live read and are saved for next time.
-- The block card also opens the page in the phone's browser and opens the official myAmrita app.
+- Sign in to the attendance page in the app's GeckoView browser, then tap **Use attendance · [term]** to save that page's data in the app.
+- The block card also opens the official myAmrita app.
 
 Feedback
 
 - Course feedback and class TLP feedback as plain cards: Pending, Completed or Closed. A term picker for the older rounds.
-- Tap a pending card and the form opens in the app. Enter your OTP as usual.
+- If the portal blocks the app's WebView, tap **Fill feedback in the app browser** to open the feedback list in GeckoView. Enter your OTP there as usual.
 - Choose an answer once (1 to 5). Tapping it answers and saves every question on the form.
 - An Auto-complete & submit switch. With it on, once the OTP is in, the app answers, saves, presses Finish, accepts "Are you sure?" and takes you back to the list.
 - If an OTP box shows up at the end of a form, it waits for you to type the code and carries on.
@@ -77,8 +79,8 @@ Look and feel
 
 Privacy
 
-- It never sees your password. You sign in on Microsoft's own page, shown in a WebView.
-- No server of mine, no analytics, no ads. The only permission is INTERNET, and it only talks to students.amrita.edu and Microsoft's sign-in.
+- The app does not store your password. Microsoft sign-in opens in a WebView for attendance and in GeckoView in the app browser; their cookies are separate.
+- No server of mine, analytics, or ads. The app browser accepts HTTP and HTTPS addresses. Amrita HTTP links are upgraded to HTTPS. The feedback helper makes no network requests of its own.
 - Saved numbers stay in the app's private storage on your phone.
 - Plain http is blocked. The portal's http redirects are upgraded to https.
 
@@ -86,7 +88,7 @@ Privacy
 
 These pages live behind the same portal and mobile API, so the same block applies. The plan, in order:
 
-1. **Attendance** — done: saved numbers, clipboard/share import, browser and official-app fallbacks.
+1. **Attendance** — done: saved numbers, browser handoff and official-app fallback.
 2. **Class attendance by day or month** — scoped, not built yet. A Campus tab with a month picker, month totals, a day-grouped list and the dates each course was missed. It needs one real copied table or screenshot to lock the columns; after that it is the same parser + card pattern as attendance.
 3. **Hostel details and passes** — scoped, not built yet. Hostel block/room/warden, monthly hostel attendance, the home-pass count and the gate-pass list with status pills. Read-only.
 4. **Filing a home pass, gate pass or leave** — deliberately not built. A pass is a real permission to leave campus; the official app or the portal is the right place for it. An unofficial client that files one wrongly, or one the warden cannot trace, is not worth the risk.
@@ -111,7 +113,11 @@ Checked on a real phone against the real portal: sign-in, the attendance numbers
 
 Not seen working yet: tapping a pending card to open its form (the fix above is in, I haven't watched it succeed), a fully hands-free run with the switch on, the wait for an OTP at the end of a form, and everything on the class TLP forms. Nothing was pending when I wrote them, so the TLP side is written against a completed form I could only look at. I don't know what the end-of-form OTP screen looks like either. The app looks for a visible text box with "otp" in its name, id or placeholder, and if yours is called something else it will miss it. Whether it all survives a real run, we'll see.
 
-For 1.2, on the phone: the block card with the saved numbers, a table shared into the app, the import dialog, and the dark glass theme. The parser's tab, newline-in-a-cell, positional, HTML, CSV and junk cases run on the host with `./test.sh`. After the block I could not re-test any signed-in live page, including the feedback forms; that stays unverified until the portal allows the app again or IT provides an API.
+For 1.3, ADB on a USB-connected Android phone confirmed that a portal link opened in Firefox's Custom Tab in the app's task, and Back returned to Amrita Attendance. I did not verify portal sign-in or page content.
+
+For 1.4, I installed the 198 MB arm64 APK over USB ADB on the A059 phone (Android API 37), opened the portal through **Open in app browser**, and saw the myAmrita sign-in page inside the app. The browser close loop returned to MainActivity without a crash in three runs. I did not sign in, so the authenticated feedback page and its bundled helper remain unverified against the live portal.
+
+For 1.5, a synthetic attendance table passed from GeckoView back to the attendance screen over USB ADB. The authenticated portal handoff still needs confirmation on a signed-in session.
 
 For the browser helper: `./browser-test.sh` runs seven end-to-end checks in headless Chromium against `test/mock-portal.py`, a local copy of the page shapes the app was written against (userscript and bookmarklet modes, auto finish, end-of-form OTP, the loop guard, TLP, and a blocked frame). On the phone I ran a whole course in Brave against that mock with real taps, from Send OTP to Finish and back to the list. Not tested: the real portal (its markup may have moved since the block), Firefox with Violentmonkey, and whether students.amrita.edu allows itself to be framed. If it doesn't, the bookmarklet says so and points you to Firefox.
 
@@ -131,22 +137,27 @@ It's signed with my own key, so Play Protect may complain. That's expected for a
 
 ## Build
 
-You need a JDK 21 and the Android SDK with platform 34, build-tools 34.0.0 and the command-line tools. There is no Gradle: `build.sh` calls `aapt2`, `javac`, `d8` and `apksigner` directly.
+You need JDK 17 or newer, the Android 17 SDK (API 37 preview), Build Tools 36.0.0, and the Android SDK command-line tools. The Gradle wrapper downloads GeckoView and its Android dependencies from Mozilla's Maven repository on the first build. This build currently targets arm64-v8a, the ABI on the phone used for development.
+
+If these Android SDK packages are missing, install them with:
+
+```
+sdkmanager --channel=3 "platforms;android-37.0" "build-tools;36.0.0"
+```
 
 ```
 ./build.sh
 ```
 
-`./test.sh` runs the parser checks on the host; it needs no device. `./browser-test.sh` rebuilds the bookmarklet and runs the browser helper against the mock portal; it needs Node 22 and Chromium.
+`./browser-test.sh` rebuilds the bookmarklet and runs the browser helper against the mock portal; it needs Node 22 and Chromium.
 
-The SDK's own d8 crashed under the default JDK here, so the script runs the newer d8 from the command-line tools. On first run it creates a keystore at `~/.android/amrita-attendance.keystore` with the password `android`. Change that before you share a build.
+The release build uses `~/.android/amrita-attendance.keystore` (alias `key`, password `android`) so it can update the app installed during development. Keep your signing key private if you publish your own APKs.
 
 ```
-src/        MainActivity.java (screens, portal logic), Glass.java (visuals),
-            AttendanceImport.java (copied-table parser)
-test/       host-side parser checks, mock portal, browser helper e2e test
-browser/    feedback helper userscript, bookmarklet and its builder
-assets/     the bookmarklet the app copies
+src/        MainActivity.java (screens, portal logic), Glass.java (visuals)
+test/       mock portal, browser helper e2e test
+browser/    feedback helper, attendance handoff, bookmarklet and GeckoView extension
+assets/     generated bookmarklet used by the browser helper tests
 res/        icon, theme, strings
 docs/       screenshots and the IT request draft
 dist/       the built APK

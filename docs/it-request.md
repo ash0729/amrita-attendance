@@ -12,7 +12,7 @@ I built a small Android app for my own use that displays my attendance from the 
 
 1. Is a student-built, read-only client allowed to access the student portal?
 2. If not, is there a supported API, or a process for registering a student client?
-3. If neither is possible, could you confirm that the app should not access the portal at all? I will remove that part and keep only a manual import from my browser.
+3. If neither is possible, could you confirm that the app should not access the portal at all? I will remove portal access and keep only numbers already saved on the phone.
 
 To be clear about what the app does: it only reads my own attendance and feedback status after I sign in with my Microsoft account. It stores nothing on a server, has no analytics or ads, and does not submit anything without me pressing a button. I can share the source with your team and make any change you require.
 
