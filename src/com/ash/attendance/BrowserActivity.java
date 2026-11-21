@@ -1,7 +1,6 @@
 package com.ash.attendance;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
@@ -38,6 +37,7 @@ public final class BrowserActivity extends Activity {
 
     private static GeckoRuntime runtime;
     private GeckoView browser;
+    private final BrowserPrompts prompts = new BrowserPrompts(this);
     private GeckoSession session;
     private WebExtension extension;
     private EditText address;
@@ -80,17 +80,17 @@ public final class BrowserActivity extends Activity {
 
         LinearLayout toolbar = new LinearLayout(this);
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
-        toolbar.setPadding(dp(8), dp(6), dp(8), dp(6));
+        toolbar.setPadding(dp(4), dp(4), dp(4), dp(4));
         toolbar.setBackground(Glass.card(this, 99));
         toolbar.setClipChildren(false);
 
         Button close = button("×", "Close browser");
         close.setOnClickListener(v -> finish());
-        toolbar.addView(close, new LinearLayout.LayoutParams(dp(42), dp(42)));
+        toolbar.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         back = button("‹", "Back");
         back.setOnClickListener(v -> goBack());
-        toolbar.addView(back, new LinearLayout.LayoutParams(dp(42), dp(42)));
+        toolbar.addView(back, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         address = new EditText(this);
         address.setSingleLine(true);
@@ -112,19 +112,19 @@ public final class BrowserActivity extends Activity {
             }
             return false;
         });
-        LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(0, dp(42), 1);
-        addressParams.setMargins(dp(6), 0, dp(6), 0);
+        LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(0, dp(44), 1);
+        addressParams.setMargins(dp(4), 0, dp(4), 0);
         toolbar.addView(address, addressParams);
 
         forward = button("›", "Forward");
         forward.setOnClickListener(v -> { if (canGoForward) session.goForward(); });
-        toolbar.addView(forward, new LinearLayout.LayoutParams(dp(42), dp(42)));
+        toolbar.addView(forward, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         Button reload = button("↻", "Reload");
         reload.setOnClickListener(v -> { if (session != null) session.reload(); });
-        toolbar.addView(reload, new LinearLayout.LayoutParams(dp(42), dp(42)));
+        toolbar.addView(reload, new LinearLayout.LayoutParams(dp(44), dp(44)));
         LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(-1, -2);
-        barParams.setMargins(dp(20), dp(8), dp(20), dp(8));
+        barParams.setMargins(dp(12), dp(8), dp(12), dp(8));
         root.setClipChildren(false);
         root.addView(toolbar, barParams);
 
@@ -243,25 +243,7 @@ public final class BrowserActivity extends Activity {
                 return null;
             }
         });
-        session.setPromptDelegate(new GeckoSession.PromptDelegate() {
-            @Override public GeckoResult<GeckoSession.PromptDelegate.PromptResponse> onButtonPrompt(
-                    GeckoSession current, GeckoSession.PromptDelegate.ButtonPrompt prompt) {
-                GeckoResult<GeckoSession.PromptDelegate.PromptResponse> result = new GeckoResult<>();
-                new AlertDialog.Builder(BrowserActivity.this)
-                        .setTitle(prompt.title == null ? "Website" : prompt.title)
-                        .setMessage(prompt.message == null ? "" : prompt.message)
-                        .setPositiveButton(android.R.string.ok,
-                                (dialog, which) -> result.complete(prompt.confirm(
-                                        GeckoSession.PromptDelegate.ButtonPrompt.Type.POSITIVE)))
-                        .setNegativeButton(android.R.string.cancel,
-                                (dialog, which) -> result.complete(prompt.confirm(
-                                        GeckoSession.PromptDelegate.ButtonPrompt.Type.NEGATIVE)))
-                        .setOnCancelListener(dialog -> result.complete(prompt.confirm(
-                                GeckoSession.PromptDelegate.ButtonPrompt.Type.NEGATIVE)))
-                        .show();
-                return result;
-            }
-        });
+        session.setPromptDelegate(prompts);
         session.open(runtime);
         if (extension != null) {
             session.getWebExtensionController().setMessageDelegate(extension, new WebExtension.MessageDelegate() {
@@ -370,8 +352,13 @@ public final class BrowserActivity extends Activity {
     }
 
     private void updateNavigationButtons() {
-        if (back != null) back.setEnabled(canGoBack);
-        if (forward != null) forward.setEnabled(canGoForward);
+        if (back != null) { back.setEnabled(canGoBack); back.setAlpha(canGoBack ? 1f : 0.35f); }
+        if (forward != null) { forward.setEnabled(canGoForward); forward.setAlpha(canGoForward ? 1f : 0.35f); }
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == BrowserPrompts.FILE_REQUEST) prompts.onFileResult(resultCode, data);
     }
 
     @Override public void onResume() {
