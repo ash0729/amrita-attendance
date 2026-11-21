@@ -2,9 +2,13 @@
 
 An Android app for the Amrita student portal. It shows your attendance without the sideways scrolling, and it fills in the course feedback forms so you don't spend an evening tapping through them.
 
-| | | | | |
-|---|---|---|---|---|
-| ![Attendance, dark](docs/screenshots/attendance-dark.png) | ![Attendance, light](docs/screenshots/attendance-light.png) | ![Semester picker](docs/screenshots/attendance-semester-picker.png) | ![Feedback, blocked](docs/screenshots/feedback-blocked-dark.png) |
+![Attendance, Campus tab and the app browser](docs/screenshots/1.6/cover.png)
+
+| Attendance | Missed classes by day | Campus tab |
+|---|---|---|
+| ![Attendance](docs/screenshots/1.6/1-attendance.png) | ![Missed classes by day](docs/screenshots/1.6/3-campus-days.png) | ![Campus tab](docs/screenshots/1.6/2-campus.png) |
+| **Portal home in the app browser** | **Hide parts of a page** | **Portal attendance, phone layout** |
+| ![Portal home](docs/screenshots/1.6/4-portal-home.png) | ![Hide parts of a page](docs/screenshots/1.6/6-hide.png) | ![Portal attendance](docs/screenshots/1.6/7-portal-attendance.png) |
 
 **[Download the APK](https://github.com/ash0729/amrita-attendance/releases/latest)** (version 1.6, Android 8.0 or newer, arm64, about 190 MB because it carries its own Firefox engine for the app browser).
 
