@@ -89,9 +89,9 @@ Privacy
 These pages live behind the same portal and mobile API, so the same block applies. The plan, in order:
 
 1. **Attendance** — done: saved numbers, browser handoff and official-app fallback.
-2. **Class attendance by day or month** — scoped, not built yet. A Campus tab with a month picker, month totals, a day-grouped list and the dates each course was missed. It needs one real copied table or screenshot to lock the columns; after that it is the same parser + card pattern as attendance.
-3. **Hostel details and passes** — scoped, not built yet. Hostel block/room/warden, monthly hostel attendance, the home-pass count and the gate-pass list with status pills. Read-only.
-4. **Filing a home pass, gate pass or leave** — deliberately not built. A pass is a real permission to leave campus; the official app or the portal is the right place for it. An unofficial client that files one wrongly, or one the warden cannot trace, is not worth the risk.
+2. **Class attendance by day or month** — built, untested against the real pages. The Campus tab has a month picker, month totals, a day-grouped list and the dates each course was missed. Data comes from a page you open yourself in the app browser: tap "Use this page" and the tables are read from it. Columns are found by header keywords (date, status, course, hour, month, attended, total) and cell shapes (dates, P/A/OD), in long or wide layouts, because I have not seen the real tables yet. Import one month at a time and they add up.
+3. **Hostel details and passes** — built the same way, also untested against the real pages. Hostel block/room/warden, hostel attendance, the home-pass count and the gate-pass list with status pills. Read-only; any other table you open is kept as a collapsible card.
+4. **Filing a home pass, gate pass or leave** — deliberately not built. A pass is a real permission to leave campus; the official app or the portal is the right place for it. An unofficial client that files one wrongly, or one the warden cannot trace, is not worth the risk. The Campus tab only links to the official route (the myAmrita app, or the portal in the app browser); it has no form that files anything.
 
 Live campus data needs Amrita IT's permission or a supported API. The endpoint names visible in the official app are not public API documentation, and using its embedded credentials to impersonate it is off the table.
 

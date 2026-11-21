@@ -9,7 +9,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://students.amrita.edu/client/class-attendance*"],
+      "matches": ["https://students.amrita.edu/*"],
       "js": ["attendance-bridge.js"],
       "run_at": "document_idle"
     },

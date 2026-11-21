@@ -32,6 +32,7 @@ import org.json.JSONObject;
 public final class BrowserActivity extends Activity {
     static final String EXTRA_URL = "browser_url";
     static final String EXTRA_ATTENDANCE_JSON = "browser_attendance_json";
+    static final String EXTRA_PAGE_JSON = "browser_page_json";
     static final String FEEDBACK_EXTENSION = "resource://android/assets/geckoview-feedback/";
     static final String FEEDBACK_EXTENSION_ID = "feedback-helper@amrita-attendance";
 
@@ -43,8 +44,10 @@ public final class BrowserActivity extends Activity {
     private Button back;
     private Button forward;
     private Button useAttendance;
+    private Button usePage;
     private ProgressBar progress;
     private JSONObject attendanceData;
+    private JSONObject pageData;
     private boolean canGoBack;
     private boolean canGoForward;
 
@@ -125,15 +128,7 @@ public final class BrowserActivity extends Activity {
         root.setClipChildren(false);
         root.addView(toolbar, barParams);
 
-        useAttendance = button("Use attendance from browser", "Use attendance from this page");
-        useAttendance.setTextSize(14);
-        useAttendance.setTextColor(MainActivity.ON_SEL);
-        useAttendance.setBackground(Glass.selected(this, 99, MainActivity.ACCENT));
-        useAttendance.setStateListAnimator(null);
-        useAttendance.setAllCaps(false);
-        useAttendance.setTypeface(Glass.medium());
-        Glass.pressable(useAttendance);
-        useAttendance.setVisibility(View.GONE);
+        useAttendance = accentButton("Use attendance from browser", "Use attendance from this page");
         useAttendance.setOnClickListener(v -> {
             if (attendanceData == null) return;
             setResult(RESULT_OK, new Intent().putExtra(EXTRA_ATTENDANCE_JSON, attendanceData.toString()));
@@ -142,6 +137,14 @@ public final class BrowserActivity extends Activity {
         LinearLayout.LayoutParams pickParams = new LinearLayout.LayoutParams(-1, dp(44));
         pickParams.setMargins(dp(20), dp(4), dp(20), dp(8));
         root.addView(useAttendance, pickParams);
+
+        usePage = accentButton("Use this page", "Keep a copy of this page's tables in the Campus tab");
+        usePage.setOnClickListener(v -> {
+            if (pageData == null) return;
+            setResult(RESULT_OK, new Intent().putExtra(EXTRA_PAGE_JSON, pageData.toString()));
+            finish();
+        });
+        root.addView(usePage, pickParams);
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(100);
@@ -154,6 +157,16 @@ public final class BrowserActivity extends Activity {
         root.addView(browser, new LinearLayout.LayoutParams(-1, 0, 1));
         setContentView(root);
         updateNavigationButtons();
+    }
+
+    private Button accentButton(String label, String description) {
+        Button b = button(label, description);
+        b.setTextSize(14);
+        b.setTextColor(MainActivity.ON_SEL);
+        b.setBackground(Glass.selected(this, 99, MainActivity.ACCENT));
+        b.setTypeface(Glass.medium());
+        b.setVisibility(View.GONE);
+        return b;
     }
 
     private Button button(String label, String description) {
@@ -179,6 +192,8 @@ public final class BrowserActivity extends Activity {
             @Override public void onPageStart(GeckoSession current, String uri) {
                 progress.setProgress(0);
                 progress.setVisibility(View.VISIBLE);
+                pageData = null;
+                usePage.setVisibility(View.GONE);
                 setAddress(uri);
             }
 
@@ -253,9 +268,14 @@ public final class BrowserActivity extends Activity {
                 @Override public GeckoResult<Object> onMessage(String nativeApp, Object message,
                         WebExtension.MessageSender sender) {
                     if (!"browser".equals(nativeApp) || sender.session != session || !sender.isTopLevel()
-                            || !isAttendancePage(sender.url) || !(message instanceof JSONObject)) return null;
+                            || !(message instanceof JSONObject)) return null;
                     JSONObject envelope = (JSONObject) message;
-                    if (!"attendance".equals(envelope.optString("type"))) return null;
+                    String type = envelope.optString("type");
+                    if ("page".equals(type) && isPortalPage(sender.url)) {
+                        onPageData(envelope, isAttendancePage(sender.url));
+                        return null;
+                    }
+                    if (!"attendance".equals(type) || !isAttendancePage(sender.url)) return null;
                     try {
                         String json = envelope.optString("dataJson", null);
                         JSONObject data = json == null ? null : new JSONObject(json);
@@ -276,6 +296,25 @@ public final class BrowserActivity extends Activity {
         session.setFocused(true);
         address.setText(url);
         session.loadUri(url);
+    }
+
+    /** A table/pair dump of a portal page: offer it when the Campus parser finds something in it. */
+    private void onPageData(JSONObject envelope, boolean attendancePage) {
+        try {
+            String json = envelope.optString("dataJson", null);
+            if (json == null || json.length() > 200000) return;
+            JSONObject data = new JSONObject(json);
+            Campus.Kind kind = Campus.classify(CampusStore.toPage(data)).kind;
+            // The attendance page has its own button; its table would only show up here as a plain page.
+            if (kind == Campus.Kind.NONE || (attendancePage && attendanceData != null)) {
+                pageData = null;
+                usePage.setVisibility(View.GONE);
+                return;
+            }
+            pageData = data;
+            usePage.setText("Use this page \u00B7 " + Campus.label(kind));
+            usePage.setVisibility(View.VISIBLE);
+        } catch (Exception ignored) { }
     }
 
     private void loadAddress() {
@@ -307,6 +346,11 @@ public final class BrowserActivity extends Activity {
     private static boolean isAmritaHost(String host) {
         return host != null && (host.equalsIgnoreCase("amrita.edu")
                 || host.toLowerCase(java.util.Locale.ROOT).endsWith(".amrita.edu"));
+    }
+
+    private static boolean isPortalPage(String url) {
+        Uri uri = Uri.parse(url);
+        return "https".equalsIgnoreCase(uri.getScheme()) && MainActivity.HOST.equalsIgnoreCase(uri.getHost());
     }
 
     private static boolean isAttendancePage(String url) {

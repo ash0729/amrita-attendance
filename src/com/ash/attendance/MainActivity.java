@@ -44,6 +44,7 @@ public class MainActivity extends Activity {
     static final String HOST = "students.amrita.edu";
     static final int TARGET = 75; // minimum attendance percentage
     static final int PICK_ATTENDANCE = 41;
+    static final int PICK_CAMPUS = 42;
 
     // Palette, filled in by applyTheme() from the phone's light/dark setting.
     static int BG, TXT, DIM, TER, ACCENT, GOOD, WARN, BAD, ON_GOOD, ON_SEL;
@@ -70,8 +71,10 @@ public class MainActivity extends Activity {
     final Handler ui = new Handler(Looper.getMainLooper());
     boolean polling;
     boolean feedbackMode;
+    boolean campusMode;
+    CampusTab campus;
     Glass.Backdrop backdrop;
-    final TextView[] navTabs = new TextView[2];
+    final TextView[] navTabs = new TextView[3];
     LinearLayout ratingBar;
     Glass.Segmented nav, seg;
     int autoRating;      // 0 = autofill off, else 1..5
@@ -176,7 +179,8 @@ public class MainActivity extends Activity {
         Glass.pressable(refresh);
         refresh.setOnClickListener(v -> {
             refresh.animate().rotationBy(360f).setDuration(520).start();
-            if (feedbackMode) { listPolling = false; spinner.setVisibility(View.VISIBLE); web.loadUrl(LISTS[kind]); }
+            if (campusMode) campus.render(true);
+            else if (feedbackMode) { listPolling = false; spinner.setVisibility(View.VISIBLE); web.loadUrl(LISTS[kind]); }
             else refresh();
         });
         bar.addView(refresh, new LinearLayout.LayoutParams(dp(48), dp(48)));
@@ -274,15 +278,15 @@ public class MainActivity extends Activity {
         // Floating glass tab bar: blurs the stage behind it on API 31+, plain glass elsewhere.
         nav = new Glass.Segmented(this, 99, false, 14, 5);
         nav.setSource(stage, web);
-        String[] names = {"Attendance", "Feedback"};
-        for (int i = 0; i < 2; i++) {
+        String[] names = {"Attendance", "Feedback", "Campus"};
+        for (int i = 0; i < 3; i++) {
             TextView t = text(names[i], 13, DIM, false);
             t.setTypeface(Glass.medium());
             t.setGravity(Gravity.CENTER);
             t.setPadding(0, dp(14), 0, dp(14));
             Glass.pressable(t);
             final int which = i;
-            t.setOnClickListener(v -> setMode(which == 1));
+            t.setOnClickListener(v -> setTab(which));
             navTabs[i] = t;
             nav.addTab(t);
         }
@@ -399,11 +403,44 @@ public class MainActivity extends Activity {
     }
 
     void updateNav() {
-        nav.select(feedbackMode ? 1 : 0, true);
+        nav.select(campusMode ? 2 : feedbackMode ? 1 : 0, true);
     }
 
-    void setMode(boolean feedback) {
-        if (feedback != feedbackMode) toggleFeedback();
+    /** 0 = Attendance, 1 = Feedback, 2 = Campus. */
+    void setTab(int tab) {
+        if (tab == 2) {
+            if (!campusMode) enterCampus();
+            return;
+        }
+        boolean wasCampus = campusMode;
+        if (wasCampus) leaveCampus();
+        if ((tab == 1) != feedbackMode) toggleFeedback();
+        else if (wasCampus) {
+            updateNav();
+            if (!showSaved()) status.setText("Loading\u2026");
+            refresh();
+        }
+    }
+
+    void enterCampus() {
+        polling = listPolling = false;
+        autoRating = 0;
+        autoStarted = autoConfirm = autoFinishing = false;
+        ui.removeCallbacks(stepRunner);
+        feedbackMode = false;
+        campusMode = true;
+        ratingBar.setVisibility(View.GONE);
+        web.setVisibility(View.INVISIBLE);
+        spinner.setVisibility(View.GONE);
+        titleView.setText("Campus");
+        updateNav();
+        if (campus == null) campus = new CampusTab(this);
+        campus.render(true);
+    }
+
+    void leaveCampus() {
+        campusMode = false;
+        titleView.setText("Attendance");
     }
 
     /** Shows the dialog on a rounded glass sheet with themed text. */
@@ -521,6 +558,7 @@ public class MainActivity extends Activity {
     }
 
     void pollList() {
+        if (campusMode) { listPolling = false; return; }
         String url = web.getUrl();
         if (!feedbackMode || url == null || !(url.contains("course-feedback-list") || url.contains("/client/class-feedback"))) { listPolling = false; return; }
         web.evaluateJavascript(LIST_JS, value -> {
@@ -547,6 +585,7 @@ public class MainActivity extends Activity {
     }
 
     void renderList(JSONObject o) throws Exception {
+        if (campusMode) return;
         JSONArray rows = o.getJSONArray("rows");
         final JSONArray terms = o.optJSONArray("terms");
         list.removeAllViews();
@@ -614,7 +653,7 @@ public class MainActivity extends Activity {
 
     /** Called when any page finishes loading in the WebView. */
     void onPage(String url) {
-        if (url == null) return;
+        if (url == null || campusMode) return;
         if (feedbackMode) {
             spinner.setVisibility(View.GONE);
             boolean isList = url.contains("course-feedback-list") || url.contains("/client/class-feedback");
@@ -708,6 +747,7 @@ public class MainActivity extends Activity {
 
     /** The table may be filled in after load, so retry for a few seconds. */
     void poll() {
+        if (campusMode) { polling = false; return; }
         String url = web.getUrl();
         if (url == null || !url.contains(HOST)) { polling = false; return; }
         web.evaluateJavascript(EXTRACT_JS, value -> {
@@ -806,6 +846,7 @@ public class MainActivity extends Activity {
     }
 
     void render(JSONObject data, long time, boolean cached) {
+        if (campusMode) return;
         try {
             JSONArray courses = parse(data.getJSONArray("rows"));
             list.removeAllViews();
@@ -904,6 +945,7 @@ public class MainActivity extends Activity {
 
     /** The portal refused the app. Keep the saved numbers and offer its in-app browser. */
     void showBlocked(final String url) {
+        if (campusMode) return;
         spinner.setVisibility(View.GONE);
         web.setVisibility(View.INVISIBLE);
         ratingBar.setVisibility(View.GONE);
@@ -969,9 +1011,31 @@ public class MainActivity extends Activity {
         startActivityForResult(BrowserActivity.intent(this, url), PICK_ATTENDANCE);
     }
 
+    void openCampusBrowser(String url) {
+        startActivityForResult(BrowserActivity.intent(this, url), PICK_CAMPUS);
+    }
+
+    /** A portal page the user chose in the app browser: classify it and keep what the Campus tab can show. */
+    void importPage(String json) {
+        String note;
+        try {
+            Campus.Page page = CampusStore.toPage(new JSONObject(json));
+            Campus.Result r = Campus.classify(page);
+            note = CampusStore.save(prefs, page, r, System.currentTimeMillis());
+        } catch (Exception e) {
+            note = "Couldn't read that page";
+        }
+        if (campusMode) campus.render(false);
+        else setTab(2);
+        status.setText(note);
+    }
+
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != PICK_ATTENDANCE || resultCode != RESULT_OK || data == null) return;
+        if (resultCode != RESULT_OK || data == null) return;
+        String page = data.getStringExtra(BrowserActivity.EXTRA_PAGE_JSON);
+        if (page != null) { importPage(page); return; }
+        if (data.getStringExtra(BrowserActivity.EXTRA_ATTENDANCE_JSON) == null) return;
         try {
             JSONObject attendance = new JSONObject(data.getStringExtra(BrowserActivity.EXTRA_ATTENDANCE_JSON));
             if (parse(attendance.getJSONArray("rows")).length() == 0) {
@@ -983,6 +1047,7 @@ public class MainActivity extends Activity {
             if (!attendance.has("terms")) attendance.put("terms", new JSONArray().put(term));
             if (!attendance.has("ids")) attendance.put("ids", new JSONArray().put(""));
             long now = System.currentTimeMillis();
+            if (campusMode) { leaveCampus(); updateNav(); }
             prefs.edit().putString("data", attendance.toString()).putLong("time", now).apply();
             if (prefs.getBoolean("blocked", false)) showBlocked(URL);
             else render(attendance, now, true);
