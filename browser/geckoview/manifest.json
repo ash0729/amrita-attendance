@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Amrita Attendance and Feedback",
-  "version": "1.7",
+  "version": "1.8",
   "browser_specific_settings": {
     "gecko": {
       "id": "feedback-helper@amrita-attendance"
@@ -9,12 +9,23 @@
   },
   "content_scripts": [
     {
+      "matches": ["https://my.amrita.edu/", "https://my.amrita.edu/index*"],
+      "js": ["portal-login.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://students.amrita.edu/*"],
+      "js": ["portal-tidy.js"],
+      "run_at": "document_start"
+    },
+    {
       "matches": ["https://students.amrita.edu/*"],
       "js": ["attendance-bridge.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://students.amrita.edu/client/*"],
+      "matches": ["https://students.amrita.edu/client/course-feedback*", "https://students.amrita.edu/client/class-feedback*",
+                  "https://students.amrita.edu/client/feedback*"],
       "js": ["amrita-feedback.user.js"],
       "run_at": "document_idle",
       "world": "MAIN"
@@ -23,6 +34,7 @@
   "permissions": [
     "nativeMessaging",
     "nativeMessagingFromContent",
+    "storage",
     "geckoViewAddons"
   ]
 }

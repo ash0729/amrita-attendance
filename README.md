@@ -62,6 +62,14 @@ Attendance
 - Sign in to the attendance page in the app's GeckoView browser, then tap **Use attendance · [term]** to save that page's data in the app.
 - The block card also opens the official myAmrita app.
 
+App browser
+
+- Opens the whole student portal, laid out for a phone: the section buttons sit in a grid that fits one screen, the breadcrumb, footer and empty header band are gone, and tables wider than the screen turn into one card per row.
+- If the portal has signed you out but Microsoft still remembers you, it presses LOGIN for you (once every 30 seconds at most). It never types anything.
+- The ⋮ menu jumps straight to any portal section, and has **Hide parts of this page**: tap anything to hide it on every portal page, like Brave's element blocker. **Show everything I hid** brings it all back, and **Phone layout** switches the restyle off.
+- Dropdowns (the Academic Term picker), date and time pickers, alerts, file uploads and downloads all work. Downloads are saved to the phone's Downloads folder.
+- The Absent Report under Class Attendance can be kept in the Campus tab: every missed class by date and period.
+
 Feedback
 
 - Course feedback and class TLP feedback as plain cards: Pending, Completed or Closed. A term picker for the older rounds.

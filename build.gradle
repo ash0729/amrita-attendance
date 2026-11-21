@@ -58,6 +58,8 @@ tasks.register('prepareEmbeddedFeedback', Sync) {
     from('browser/amrita-feedback.user.js')
     from('browser/geckoview/manifest.json')
     from('browser/geckoview/attendance-bridge.js')
+    from('browser/geckoview/portal-tidy.js')
+    from('browser/geckoview/portal-login.js')
     into(layout.buildDirectory.dir('generated/gecko-assets/geckoview-feedback'))
 }
 

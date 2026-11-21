@@ -104,13 +104,46 @@
     return pairs;
   }
 
+  /** Attendance > Absent Report: one row per course, each holding a small table of dates and periods. Flatten it
+   *  into date / course / period / status rows so the Campus tab reads it as day-wise attendance. */
+  function absentReport() {
+    if (location.pathname !== '/client/absent-report') return null;
+    const outer = Array.from(document.querySelectorAll('table')).find(t => !t.parentElement.closest('table') && t.querySelector('table'));
+    if (!outer) return null;
+    const headRow = Array.from(outer.querySelectorAll('tr')).find(tr => tr.closest('table') === outer);
+    const heads = headRow ? Array.from(headRow.children, c => clean(c.innerText).toLowerCase()) : [];
+    let courseCol = heads.findIndex(h => h.includes('course'));
+    const rows = [];
+    outer.querySelectorAll('tr').forEach(tr => {
+      if (tr.closest('table') !== outer || rows.length >= MAX_ROWS) return;
+      const inner = tr.querySelector('table');
+      if (!inner) return;
+      const cells = Array.from(tr.children);
+      const course = clean((cells[courseCol >= 0 ? courseCol : 2] || cells[0]).innerText);
+      const innerRows = Array.from(inner.querySelectorAll('tr'));
+      const ih = innerRows.length ? Array.from(innerRows[0].children, c => clean(c.innerText).toLowerCase()) : [];
+      const dc = ih.findIndex(h => h.includes('date')), pc = ih.findIndex(h => h.includes('period') || h.includes('hour'));
+      innerRows.slice(1).forEach(r => {
+        const c = Array.from(r.children, x => clean(x.innerText));
+        const date = c[dc >= 0 ? dc : 1];
+        if (date) rows.push([date, course, pc >= 0 ? c[pc] || '' : '', 'Absent']);
+      });
+    });
+    if (!rows.length) return null;
+    const select = document.querySelector('select');
+    const term = select && select.selectedIndex >= 0 ? clean(select.options[select.selectedIndex].text) : '';
+    return { caption: 'Absent report' + (term ? ' · ' + term : ''), headers: ['Date', 'Course', 'Period', 'Status'], rows };
+  }
+
   function reportPage() {
     if (location.protocol !== 'https:' || location.hostname !== 'students.amrita.edu') return;
     const heading = document.querySelector('h1,h2,h3,h4');
     const title = [document.title, heading ? heading.innerText : '']
       .map(clean).filter(Boolean).join(' · ');
     const tables = [];
-    document.querySelectorAll('table').forEach(table => {
+    const absent = absentReport();
+    if (absent) tables.push(absent);
+    else document.querySelectorAll('table').forEach(table => {
       if (tables.length >= MAX_TABLES) return;
       const t = readTable(table);
       if (t.rows.length) tables.push(t);

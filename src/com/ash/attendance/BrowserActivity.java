@@ -42,7 +42,6 @@ public final class BrowserActivity extends Activity {
     private WebExtension extension;
     private EditText address;
     private Button back;
-    private Button forward;
     private Button useAttendance;
     private Button usePage;
     private ProgressBar progress;
@@ -50,6 +49,9 @@ public final class BrowserActivity extends Activity {
     private JSONObject pageData;
     private boolean canGoBack;
     private boolean canGoForward;
+    private WebExtension.Port tidyPort;
+    private int hiddenCount;
+    private boolean picking;
 
     public static Intent intent(Context context, String url) {
         return new Intent(context, BrowserActivity.class).putExtra(EXTRA_URL, url);
@@ -116,9 +118,9 @@ public final class BrowserActivity extends Activity {
         addressParams.setMargins(dp(4), 0, dp(4), 0);
         toolbar.addView(address, addressParams);
 
-        forward = button("›", "Forward");
-        forward.setOnClickListener(v -> { if (canGoForward) session.goForward(); });
-        toolbar.addView(forward, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        Button menu = button("\u22EE", "Menu: portal sections, hide parts of the page, forward");
+        menu.setOnClickListener(v -> showMenu());
+        toolbar.addView(menu, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         Button reload = button("↻", "Reload");
         reload.setOnClickListener(v -> { if (session != null) session.reload(); });
@@ -187,13 +189,25 @@ public final class BrowserActivity extends Activity {
 
     private void openPage(String url) {
         session = new GeckoSession();
-        session.setContentDelegate(new GeckoSession.ContentDelegate() {});
+        session.setContentDelegate(new GeckoSession.ContentDelegate() {
+            @Override public void onExternalResponse(GeckoSession current, org.mozilla.geckoview.WebResponse response) {
+                BrowserDownloads.save(BrowserActivity.this, response);
+            }
+
+            @Override public void onCloseRequest(GeckoSession current) { goBack(); }
+
+            @Override public void onCrash(GeckoSession current) { restart(current); }
+
+            @Override public void onKill(GeckoSession current) { restart(current); }
+        });
         session.setProgressDelegate(new GeckoSession.ProgressDelegate() {
             @Override public void onPageStart(GeckoSession current, String uri) {
                 progress.setProgress(0);
                 progress.setVisibility(View.VISIBLE);
                 pageData = null;
                 usePage.setVisibility(View.GONE);
+                attendanceData = null;
+                useAttendance.setVisibility(View.GONE);
                 setAddress(uri);
             }
 
@@ -271,6 +285,23 @@ public final class BrowserActivity extends Activity {
                     } catch (Exception ignored) { }
                     return null;
                 }
+
+                /** The tidy script on each portal page connects a port; keep the top-level one for menu commands. */
+                @Override public void onConnect(WebExtension.Port port) {
+                    if (port.sender.session != session || !port.sender.isTopLevel()) { port.disconnect(); return; }
+                    tidyPort = port;
+                    port.setDelegate(new WebExtension.PortDelegate() {
+                        @Override public void onPortMessage(Object m, WebExtension.Port p) {
+                            if (m instanceof JSONObject && "tidy".equals(((JSONObject) m).optString("type"))) {
+                                hiddenCount = ((JSONObject) m).optInt("count", hiddenCount);
+                                picking = ((JSONObject) m).optBoolean("picking", false);
+                            }
+                        }
+
+                        @Override public void onDisconnect(WebExtension.Port p) { if (tidyPort == p) tidyPort = null; }
+                    });
+                    tidy("phone", getPreferences(MODE_PRIVATE).getBoolean("phone_layout", true));
+                }
             }, "browser");
         }
         browser.setSession(session);
@@ -288,6 +319,8 @@ public final class BrowserActivity extends Activity {
             JSONObject data = new JSONObject(json);
             Campus.Kind kind = Campus.classify(CampusStore.toPage(data)).kind;
             // The attendance page has its own button; its table would only show up here as a plain page.
+            // Plain tables are kept from the menu instead, so the button only shows for pages the Campus tab reads.
+            if (kind == Campus.Kind.GENERIC) { pageData = data; usePage.setVisibility(View.GONE); return; }
             if (kind == Campus.Kind.NONE || (attendancePage && attendanceData != null)) {
                 pageData = null;
                 usePage.setVisibility(View.GONE);
@@ -297,6 +330,98 @@ public final class BrowserActivity extends Activity {
             usePage.setText("Use this page \u00B7 " + Campus.label(kind));
             usePage.setVisibility(View.VISIBLE);
         } catch (Exception ignored) { }
+    }
+
+    /** The page's content process died: start a fresh tab on the same address instead of a blank view. */
+    private void restart(GeckoSession dead) {
+        if (dead != session) return;
+        String url = normalize(address.getText().toString());
+        openPage(url == null ? "https://" + MainActivity.HOST + "/client/index" : url);
+        try { dead.close(); } catch (Exception ignored) { }
+    }
+
+    private void tidy(String cmd, Boolean on) {
+        if (tidyPort == null) return;
+        try {
+            JSONObject m = new JSONObject().put("cmd", cmd);
+            if (on != null) m.put("on", on);
+            tidyPort.postMessage(m);
+        } catch (Exception ignored) { }
+    }
+
+    /** Portal sections, in the order of the portal's home page. Paths are relative to https://students.amrita.edu. */
+    static final String[][] SECTIONS = {
+            {"Home", "/client/index"},
+            {"Class attendance", "/client/class-attendance"},
+            {"Absent report", "/client/absent-report"},
+            {"Timetable", "/client/timetable"},
+            {"Marks", "/client/mark"},
+            {"Course feedback", "/client/course-feedback-list"},
+            {"TLP feedback", "/client/class-feedback"},
+            {"Leave list", "/client/leave-list"},
+            {"Gate pass \u00B7 Hostel", "/hostel/index"},
+            {"Profile", "/client/profile"},
+            {"Payments", "/client/payment"},
+            {"Services", "/client/request-list"},
+            {"Complaints", "/client/complaints"},
+            {"Downloads", "/client/downloads"},
+            {"Documents", "/client/document"},
+            {"Incidents", "/client/incidents"},
+            {"Awards", "/client/award-list"},
+            {"Supplementary", "/client/supply-request"},
+            {"Refund", "/client/refund-list"},
+            {"Exit survey", "/client/exit-survey"},
+    };
+
+    private void showMenu() {
+        boolean portal = tidyPort != null;
+        boolean phone = getPreferences(MODE_PRIVATE).getBoolean("phone_layout", true);
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        java.util.List<Runnable> actions = new java.util.ArrayList<>();
+        labels.add("Portal sections\u2026"); actions.add(this::showSections);
+        if (canGoForward) { labels.add("Forward"); actions.add(() -> session.goForward()); }
+        if (portal) {
+            labels.add("Hide parts of this page"); actions.add(() -> tidy("pick", null));
+            if (hiddenCount > 0) {
+                labels.add("Show everything I hid (" + hiddenCount + ")");
+                actions.add(() -> tidy("reset", null));
+            }
+            labels.add(phone ? "Phone layout: on" : "Phone layout: off");
+            actions.add(() -> {
+                getPreferences(MODE_PRIVATE).edit().putBoolean("phone_layout", !phone).apply();
+                tidy("phone", !phone);
+            });
+        }
+        if (pageData != null && !usePage.isShown()) {
+            labels.add("Keep this page's tables in Campus");
+            actions.add(() -> {
+                setResult(RESULT_OK, new Intent().putExtra(EXTRA_PAGE_JSON, pageData.toString()));
+                finish();
+            });
+        }
+        glassList(null, labels.toArray(new String[0]), i -> actions.get(i).run());
+    }
+
+    private void showSections() {
+        String[] names = new String[SECTIONS.length];
+        for (int i = 0; i < names.length; i++) names[i] = SECTIONS[i][0];
+        glassList("Portal sections", names, i -> {
+            if (session != null) session.loadUri("https://" + MainActivity.HOST + SECTIONS[i][1]);
+        });
+    }
+
+    private interface Pick { void at(int i); }
+
+    private void glassList(String title, String[] items, Pick pick) {
+        android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(this)
+                .setItems(items, (d, i) -> pick.at(i));
+        if (title != null) b.setTitle(title);
+        android.app.AlertDialog d = b.create();
+        d.show();
+        if (d.getWindow() != null) {
+            d.getWindow().setBackgroundDrawable(new android.graphics.drawable.InsetDrawable(Glass.sheet(this), dp(13)));
+            d.getWindow().setGravity(Gravity.TOP | Gravity.END);
+        }
     }
 
     private void loadAddress() {
@@ -353,7 +478,6 @@ public final class BrowserActivity extends Activity {
 
     private void updateNavigationButtons() {
         if (back != null) { back.setEnabled(canGoBack); back.setAlpha(canGoBack ? 1f : 0.35f); }
-        if (forward != null) { forward.setEnabled(canGoForward); forward.setAlpha(canGoForward ? 1f : 0.35f); }
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -378,6 +502,7 @@ public final class BrowserActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        if (picking) { tidy("stop", null); picking = false; return; }
         goBack();
     }
 

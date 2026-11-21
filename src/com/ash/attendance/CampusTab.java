@@ -158,13 +158,16 @@ final class CampusTab {
         c.setGravity(Gravity.CENTER_VERTICAL);
         TextView big = a.text("", 30, MainActivity.TXT, true);
         big.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        Glass.countUp(big, pct, MainActivity.colorFor(pct));
+        // The portal's Absent Report lists only missed classes; a percentage from it would read 0%.
+        if (pr + od == 0 && ab > 0) { big.setText(String.valueOf(ab)); big.setTextColor(MainActivity.BAD); }
+        else Glass.countUp(big, pct, MainActivity.colorFor(pct));
         c.addView(big, new LinearLayout.LayoutParams(-2, -2));
         LinearLayout side = new LinearLayout(a);
         side.setOrientation(LinearLayout.VERTICAL);
         side.setPadding(a.dp(18), 0, 0, 0);
         side.addView(a.text(monthName(month), 15, MainActivity.TXT, true));
-        side.addView(a.text(pr + " present · " + ab + " absent · " + od + " OD", 13, MainActivity.DIM, false));
+        side.addView(a.text(pr + od == 0 && ab > 0 ? (ab == 1 ? "class missed" : "classes missed")
+                : pr + " present · " + ab + " absent · " + od + " OD", 13, MainActivity.DIM, false));
         c.addView(side, new LinearLayout.LayoutParams(0, -2, 1));
         list.addView(c);
     }
