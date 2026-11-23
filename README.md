@@ -10,7 +10,7 @@ An Android app for the Amrita student portal. It shows your attendance without t
 | **Portal home in the app browser** | **Hide parts of a page** | **Portal attendance, phone layout** |
 | ![Portal home](docs/screenshots/1.6/4-portal-home.png) | ![Hide parts of a page](docs/screenshots/1.6/6-hide.png) | ![Portal attendance](docs/screenshots/1.6/7-portal-attendance.png) |
 
-**[Download the APK](https://github.com/ash0729/amrita-attendance/releases/latest)** (version 1.6, Android 8.0 or newer, arm64, about 190 MB because it carries its own Firefox engine for the app browser).
+**[Download the APK](https://github.com/ash0729/amrita-attendance/releases/latest)** (version 1.7, Android 8.0 or newer, arm64, about 90 MB because it carries its own Firefox engine for the app browser).
 
 ## Why I built this
 
@@ -44,7 +44,7 @@ If Amrita IT allows a student-built client or provides an API, live attendance a
 
 The **Open in app browser** button opens a browser screen powered by [Mozilla GeckoView](https://mozilla.github.io/geckoview/consumer/), the Firefox browser engine. It has an address bar, Back, Forward and Reload controls. You can sign in and open the portal without switching to Firefox or Chrome.
 
-The browser keeps its own cookies inside the app. They are separate from the app's older WebView session and from Firefox or Chrome. The app uses GeckoView's normal page loading; it does not rewrite browser headers or user-agent strings. The portal may still block the embedded browser.
+The browser keeps its own cookies inside the app. They are separate from the app's older WebView session and from Firefox or Chrome. Since 23 November 2026 students.amrita.edu answers every Firefox browser, desktop Firefox included, with "Please use Chrome or Safari browser." It decides by the User-Agent string alone, so the app browser sends a Chrome for Android User-Agent. That is the same thing a Firefox user does with a User-Agent switcher. Nothing else about the requests is changed. The portal may still block the embedded browser in other ways.
 
 On the attendance page, the browser reads the visible table locally. Tap **Use attendance · [term]** to send it to the app, where the numbers are saved and shown in the attendance cards. There is no copy/paste step.
 

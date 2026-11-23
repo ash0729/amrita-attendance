@@ -23,6 +23,7 @@ import org.mozilla.geckoview.AllowOrDeny;
 import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoSession;
+import org.mozilla.geckoview.GeckoSessionSettings;
 import org.mozilla.geckoview.GeckoView;
 import org.mozilla.geckoview.WebExtension;
 import org.json.JSONObject;
@@ -34,6 +35,9 @@ public final class BrowserActivity extends Activity {
     static final String EXTRA_PAGE_JSON = "browser_page_json";
     static final String FEEDBACK_EXTENSION = "resource://android/assets/geckoview-feedback/";
     static final String FEEDBACK_EXTENSION_ID = "feedback-helper@amrita-attendance";
+    /** students.amrita.edu answers any Firefox/Gecko User-Agent with "Please use Chrome or Safari browser". */
+    static final String CHROME_UA = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/143.0.0.0 Mobile Safari/537.36";
 
     private static GeckoRuntime runtime;
     private GeckoView browser;
@@ -188,7 +192,9 @@ public final class BrowserActivity extends Activity {
     }
 
     private void openPage(String url) {
-        session = new GeckoSession();
+        session = new GeckoSession(new GeckoSessionSettings.Builder()
+                .userAgentOverride(CHROME_UA)
+                .build());
         session.setContentDelegate(new GeckoSession.ContentDelegate() {
             @Override public void onExternalResponse(GeckoSession current, org.mozilla.geckoview.WebResponse response) {
                 BrowserDownloads.save(BrowserActivity.this, response);

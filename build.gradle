@@ -14,8 +14,8 @@ android {
         applicationId 'com.ash.attendance'
         minSdk 26
         targetSdk 34
-        versionCode 7
-        versionName '1.6'
+        versionCode 8
+        versionName '1.7'
         ndk { abiFilters 'arm64-v8a' }
     }
 
@@ -30,9 +30,16 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
+    }
+
+    // Store native libs compressed: libxul.so is ~155 MB raw and ~55 MB deflated.
+    packaging {
+        jniLibs { useLegacyPackaging true }
     }
 
     compileOptions {
