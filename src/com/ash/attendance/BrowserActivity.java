@@ -51,6 +51,8 @@ public final class BrowserActivity extends Activity {
     private ProgressBar progress;
     private JSONObject attendanceData;
     private JSONObject pageData;
+    private boolean attendanceTermResolved;
+    private boolean attendanceRouteRequested;
     private boolean canGoBack;
     private boolean canGoForward;
     private WebExtension.Port tidyPort;
@@ -69,6 +71,7 @@ public final class BrowserActivity extends Activity {
         String initialUrl = getIntent().getStringExtra(EXTRA_URL);
         if (initialUrl == null) initialUrl = MainActivity.URL;
         final String firstUrl = normalize(initialUrl);
+        attendanceRouteRequested = isAttendancePage(firstUrl);
         runtime.getWebExtensionController().ensureBuiltIn(FEEDBACK_EXTENSION, FEEDBACK_EXTENSION_ID)
                 .accept(builtIn -> {
                     extension = builtIn;
@@ -134,7 +137,7 @@ public final class BrowserActivity extends Activity {
         root.setClipChildren(false);
         root.addView(toolbar, barParams);
 
-        useAttendance = accentButton("Use attendance from browser", "Use attendance from this page");
+        useAttendance = accentButton("Use attendance from Firefox", "Use attendance from this Firefox page");
         useAttendance.setOnClickListener(v -> {
             if (attendanceData == null) return;
             setResult(RESULT_OK, new Intent().putExtra(EXTRA_ATTENDANCE_JSON, attendanceData.toString()));
@@ -208,6 +211,7 @@ public final class BrowserActivity extends Activity {
         });
         session.setProgressDelegate(new GeckoSession.ProgressDelegate() {
             @Override public void onPageStart(GeckoSession current, String uri) {
+                if (!isAttendancePage(uri)) attendanceTermResolved = false;
                 progress.setProgress(0);
                 progress.setVisibility(View.VISIBLE);
                 pageData = null;
@@ -278,14 +282,32 @@ public final class BrowserActivity extends Activity {
                         return null;
                     }
                     if (!"attendance".equals(type) || !isAttendancePage(sender.url)) return null;
+                    attendanceRouteRequested = false;
                     try {
                         String json = envelope.optString("dataJson", null);
                         JSONObject data = json == null ? null : new JSONObject(json);
                         if (data == null || data.toString().length() > 200000
                                 || MainActivity.parse(data.getJSONArray("rows")).length() == 0) return null;
+                        if (!attendanceTermResolved) {
+                            attendanceTermResolved = true;
+                            org.json.JSONArray terms = data.optJSONArray("terms");
+                            org.json.JSONArray ids = data.optJSONArray("ids");
+                            if (terms != null && ids != null) {
+                                String currentTerm = MainActivity.currentTermName();
+                                for (int i = 0; i < terms.length() && i < ids.length(); i++) {
+                                    if (!currentTerm.equals(terms.optString(i)) || data.optInt("sel", -1) == i) continue;
+                                    String id = ids.optString(i);
+                                    if (!id.isEmpty()) {
+                                        session.loadUri("https://" + MainActivity.HOST + "/client/class-attendance?academic_term_id="
+                                                + Uri.encode(id));
+                                        return null;
+                                    }
+                                }
+                            }
+                        }
                         attendanceData = data;
                         String term = data.optString("term", "");
-                        useAttendance.setText(term.isEmpty() ? "Use attendance from browser"
+                        useAttendance.setText(term.isEmpty() ? "Use attendance from Firefox"
                                 : "Use attendance \u00B7 " + term);
                         useAttendance.setVisibility(View.VISIBLE);
                     } catch (Exception ignored) { }
@@ -307,6 +329,10 @@ public final class BrowserActivity extends Activity {
                         @Override public void onDisconnect(WebExtension.Port p) { if (tidyPort == p) tidyPort = null; }
                     });
                     tidy("phone", getPreferences(MODE_PRIVATE).getBoolean("phone_layout", true));
+                    if (attendanceRouteRequested && isPortalHome(port.sender.url)) {
+                        attendanceRouteRequested = false;
+                        tidy("attendance", null);
+                    }
                 }
             }, "browser");
         }
@@ -471,6 +497,11 @@ public final class BrowserActivity extends Activity {
         return "https".equalsIgnoreCase(uri.getScheme())
                 && MainActivity.HOST.equalsIgnoreCase(uri.getHost())
                 && "/client/class-attendance".equals(uri.getPath());
+    }
+
+    private static boolean isPortalHome(String url) {
+        Uri uri = Uri.parse(url);
+        return isPortalPage(url) && "/client/index".equals(uri.getPath());
     }
 
     private void setAddress(String url) {

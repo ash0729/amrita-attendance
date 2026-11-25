@@ -422,7 +422,7 @@ final class Glass {
             setClipToPadding(false);
         }
 
-        /** {@code src}: what to blur; {@code hide}: a view (the WebView) that can't be captured, which turns the blur off while visible. */
+        /** {@code src}: what to blur; {@code hide}: an uncapturable child view that disables the blur while visible. */
         void setSource(View src, View hide) {
             source = src;
             exclude = hide;

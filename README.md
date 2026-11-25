@@ -28,27 +28,25 @@ myAmrita has an Android app too. In the version on my phone (1.0.18) it covers t
 
 So the app does the arithmetic and the clicking. The OTP stays with you, since it goes to your email.
 
-## The portal blocks custom apps
+## The portal rejected the Android WebView
 
 On 19 November 2026 students.amrita.edu started answering this app with:
 
 > Access denied. Custom Android applications are not allowed.
 
-That is a deliberate rule, not a parsing bug. The app no longer reads the denial page as an empty semester: both tabs show a card that says the portal is blocking the app and keeps the last numbers it saved. From Attendance, you can sign in through the embedded browser and send the table back to the app, or open the official myAmrita app.
+The old Attendance and Feedback screens loaded these pages in Android's installed WebView. The portal returned that denial, so both tabs now use the app's in-app Firefox browser to load portal pages. Attendance still keeps the last table saved on the phone.
 
-**Desktop mode does not get around it.** Desktop mode only changes the WebView's User-Agent. An Android WebView still adds `X-Requested-With: com.ash.attendance` to every request, still carries the `wv` token in its default UA, and still sends `Sec-CH-UA` client hints that name Android WebView. Removing those would mean proxying every request through the app's own HTTP client to hide that it comes from an app — exactly the behaviour the rule exists to stop. I am not doing that.
-
-If Amrita IT allows a student-built client or provides an API, live attendance and feedback can come back. Until then the app is a viewer for saved numbers, and the official app is one tap away.
+The in-app browser uses GeckoView, Mozilla's Firefox engine, with a Chrome for Android User-Agent because the portal asks for Chrome or Safari. Attendance is read from the visible page and sent back to the app when you tap **Use attendance · [term]**.
 
 ## Browser inside the app
 
 The **Open in app browser** button opens a browser screen powered by [Mozilla GeckoView](https://mozilla.github.io/geckoview/consumer/), the Firefox browser engine. It has an address bar, Back, Forward and Reload controls. You can sign in and open the portal without switching to Firefox or Chrome.
 
-The browser keeps its own cookies inside the app. They are separate from the app's older WebView session and from Firefox or Chrome. Since 23 November 2026 students.amrita.edu answers every Firefox browser, desktop Firefox included, with "Please use Chrome or Safari browser." It decides by the User-Agent string alone, so the app browser sends a Chrome for Android User-Agent. That is the same thing a Firefox user does with a User-Agent switcher. Nothing else about the requests is changed. The portal may still block the embedded browser in other ways.
+The browser keeps its cookies inside the app. They are separate from Android WebView, Firefox, and Chrome, so a sign-in saved by one of those will not carry over. Since 23 November 2026 students.amrita.edu has shown Firefox a "Please use Chrome or Safari browser" page. The app browser sends a Chrome for Android User-Agent. The portal may still block the embedded browser in other ways.
 
 On the attendance page, the browser reads the visible table locally. Tap **Use attendance · [term]** to send it to the app, where the numbers are saved and shown in the attendance cards. There is no copy/paste step.
 
-The app bundles [`browser/amrita-feedback.user.js`](browser/amrita-feedback.user.js) as a built-in GeckoView extension. From the feedback tab, tap **Fill feedback in the app browser**. The helper appears on matching portal pages, so there is no separate extension or bookmarklet to install.
+The app bundles [`browser/amrita-feedback.user.js`](browser/amrita-feedback.user.js) as a built-in GeckoView extension. From the Feedback tab, choose **Course feedback** or **Class TLP feedback**. The helper appears on those portal pages, so there is no separate extension or bookmarklet to install.
 
 The helper panel lets you pick a rating from 1 to 5, turn on **Finish & submit by itself**, and open the next pending form. You still press Send OTP and enter the code. The helper answers each question and saves it; with the switch on, it can also finish the form and return to the list. It makes no network requests of its own and does not touch login fields.
 
@@ -56,15 +54,15 @@ The helper panel lets you pick a rating from 1 to 5, turn on **Finish & submit b
 
 Attendance
 
-- You sign in once with your Microsoft account, inside the app. After that it opens straight to your numbers.
+- Sign in through the in-app Firefox browser, then tap **Use attendance · [term]** to save the table in the app.
 - One card per course: percentage, classes attended out of total, absences.
 - A ring for overall attendance, and a tick at 75% on every bar.
 - Tells you "Can miss 5 more classes" or "Attend next 3 classes to reach 75%". It uses present plus duty leave over total, which is how the portal gets its own percentage (I checked every course).
-- Opens on the current semester, like the official app, and a picker switches to any earlier one. A pick lasts until you close the app, so the next launch starts on the current semester again.
-- Keeps the last numbers, so it opens instantly with what it saw last time.
-- When the portal blocks the app, says so instead of showing an empty semester, and keeps the saved numbers below the card.
-- Sign in to the attendance page in the app's GeckoView browser, then tap **Use attendance · [term]** to save that page's data in the app.
-- The block card also opens the official myAmrita app.
+- The in-app browser selects the current semester when it is available. The semester picker opens another term in the browser.
+- Keeps the last saved attendance table on the phone, so it opens instantly with that data.
+- Keeps the last numbers on the phone, so you can still see them when you're offline.
+- The refresh button opens the in-app Firefox browser to fetch the current page again.
+- The Campus tab can open the official myAmrita app.
 
 App browser
 
@@ -76,10 +74,9 @@ App browser
 
 Feedback
 
-- Course feedback and class TLP feedback as plain cards: Pending, Completed or Closed. A term picker for the older rounds.
-- If the portal blocks the app's WebView, tap **Fill feedback in the app browser** to open the feedback list in GeckoView. Enter your OTP there as usual.
-- Choose an answer once (1 to 5). Tapping it answers and saves every question on the form.
-- An Auto-complete & submit switch. With it on, once the OTP is in, the app answers, saves, presses Finish, accepts "Are you sure?" and takes you back to the list.
+- Open Course feedback or Class TLP feedback in the in-app Firefox browser.
+- Choose a rating in the feedback helper. It fills and saves each question with that answer.
+- The helper has an Auto-complete & submit switch. Once you enter the OTP, it can answer, save, finish, accept "Are you sure?" and return to the list.
 - If an OTP box shows up at the end of a form, it waits for you to type the code and carries on.
 - It stops and says why when something looks wrong: a save that doesn't advance, a question with fewer options than your number, a Finish you cancel.
 
@@ -91,7 +88,7 @@ Look and feel
 
 Privacy
 
-- The app does not store your password. Microsoft sign-in opens in a WebView for attendance and in GeckoView in the app browser; their cookies are separate.
+- The app does not store your password. Microsoft sign-in for Attendance and Feedback opens in GeckoView, which keeps its cookies inside the app.
 - No server of mine, analytics, or ads. The app browser accepts HTTP and HTTPS addresses. Amrita HTTP links are upgraded to HTTPS. The feedback helper makes no network requests of its own.
 - Saved numbers stay in the app's private storage on your phone.
 - Plain http is blocked. The portal's http redirects are upgraded to https.

@@ -245,10 +245,28 @@ body:has(a.serv-btn) .card.bgi-no-repeat { display: none !important; }
           phoneOn = !!m.on;
           if (phoneOn) { applyPhone(); stackWide(); } else { styleTag('aa-phone').textContent = ''; unstack(); }
         }
+        else if (m.cmd === 'attendance') openAttendance();
       });
       port.onDisconnect.addListener(() => { port = null; });
       send({ type: 'tidy', picking, count: hidden.length });
     } catch (e) { port = null; }
+  }
+
+  function openAttendance() {
+    let attempts = 0;
+    const findLink = () => Array.from(document.querySelectorAll('a[href]')).find(a => {
+      try {
+        return new URL(a.href, location.href).origin === location.origin
+          && new URL(a.href, location.href).pathname.replace(/\/$/, '') === '/client/class-attendance';
+      } catch (e) { return false; }
+    });
+    const wait = setInterval(() => {
+      const link = findLink();
+      if (link) {
+        clearInterval(wait);
+        link.click();
+      } else if (++attempts >= 40) clearInterval(wait);
+    }, 250);
   }
 
   // ---- wide tables -------------------------------------------------------------------------------
