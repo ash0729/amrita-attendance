@@ -10,7 +10,7 @@ An Android app for the Amrita student portal. It shows your attendance without t
 | **Portal home in the app browser** | **Hide parts of a page** | **Portal attendance, phone layout** |
 | ![Portal home](docs/screenshots/1.6/4-portal-home.png) | ![Hide parts of a page](docs/screenshots/1.6/6-hide.png) | ![Portal attendance](docs/screenshots/1.6/7-portal-attendance.png) |
 
-**[Download the APK](https://github.com/ash0729/amrita-attendance/releases/latest)** (version 1.7, Android 8.0 or newer, arm64, about 90 MB because it carries its own Firefox engine for the app browser).
+**[Download the APK](https://github.com/ash0729/amrita-attendance/releases/latest)** (version 2.0, Android 8.0 or newer, arm64, about 90 MB because it carries its own Firefox engine for the app browser).
 
 ## Why I built this
 
@@ -127,6 +127,8 @@ For 1.3, ADB on a USB-connected Android phone confirmed that a portal link opene
 For 1.4, I installed the 198 MB arm64 APK over USB ADB on the A059 phone (Android API 37), opened the portal through **Open in app browser**, and saw the myAmrita sign-in page inside the app. The browser close loop returned to MainActivity without a crash in three runs. I did not sign in, so the authenticated feedback page and its bundled helper remain unverified against the live portal.
 
 For 1.5, a synthetic attendance table passed from GeckoView back to the attendance screen over USB ADB. The authenticated portal handoff still needs confirmation on a signed-in session.
+
+For 2.0, the in-app browser replaced the WebView on both tabs. On the A059 over USB ADB, GeckoView booted and loaded students.amrita.edu. The page opened on 2025-26 Even Sem, and the app moved itself to the current semester, 2026-27 Odd Sem. **Use attendance** then saved 388 of 419 classes (92.6%), and every course card matched the portal's own table: Leadership from Ramayana 14/16, Advanced Programming 62/68, Database Management System 60/61. The saved numbers were still there after a cold start. The feedback list opens in the same browser with the helper's panel on the page. Not tested: filling a real pending form, because every course on the list already read Completed.
 
 For the browser helper: `./browser-test.sh` runs seven end-to-end checks in headless Chromium against `test/mock-portal.py`, a local copy of the page shapes the app was written against (userscript and bookmarklet modes, auto finish, end-of-form OTP, the loop guard, TLP, and a blocked frame). On the phone I ran a whole course in Brave against that mock with real taps, from Send OTP to Finish and back to the list. Not tested: the real portal (its markup may have moved since the block), Firefox with Violentmonkey, and whether students.amrita.edu allows itself to be framed. If it doesn't, the bookmarklet says so and points you to Firefox.
 
